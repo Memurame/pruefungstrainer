@@ -6,7 +6,7 @@ import { basename, emptyQuestion, maxPoints } from '../shared/logic'
 import type { Grading, Kind, Question } from '../shared/types'
 import { examKey } from './db'
 import { markedText, pdfExcerpt } from './pdf'
-import type { Section } from './vault'
+import { countTasks, type Section } from './vault'
 
 // Bei einer Ablehnung durch die Sicherheitsfilter beantwortet automatisch ein passendes
 // Ersatzmodell die Anfrage, statt dass die Generierung abbricht.
@@ -162,6 +162,8 @@ im Text alles, was rot gedruckt ist, in ⟦…⟧ – das ist die offizielle Lö
 Aufgabenstellung. Ist nichts markiert, erkenne die Lösung am Layout (andere Farbe, Handschrift, \
 Abschnitt „Lösungen“ am Ende o. Ä.) bzw. im reinen Text an Hinweisen wie „Lösung:“.
 
+Übertrage ausnahmslos alle Aufgaben, auch wenn es sehr viele sind – keine auslassen oder zusammenfassen.
+
 Aufteilung:
 - Jede Aufgabe bzw. Teilaufgabe mit eigener Punktzahl wird eine eigene Frage (z. B. 2.1, 2.2 \
 oder 7a, 7b). "number" ist die Nummer aus der Klausur ohne Leerzeichen ("4.1", "7b").
@@ -190,6 +192,19 @@ Die Aussagen selbst gehören nicht zusätzlich in "question".
 - "mc": klassisches Multiple Choice mit genau einer richtigen Antwort aus "options" \
 (so viele Optionen wie in der Klausur), "correct_index" zeigt auf sie.
 - "frei": alles andere (Erklären, Nennen, Berechnen, Tabellen mit freien Einträgen).
+
+Auswahlaufgaben ohne Antwortmöglichkeiten: Manche Klausuren nennen nur die Frage und den Typ, z. B. \
+„(SC)“ für Single Choice oder „(MC)“ bzw. „Wählen Sie alle zutreffenden Antworten aus“ für \
+Multiple Choice, ohne die Optionen. Dann erstellst du die Antwortmöglichkeiten selbst, fachlich \
+korrekt und passend zum Thema der Klausur, und setzt "has_solution" auf false:
+- Single Choice → kind "mc" mit 4 Optionen, genau eine richtig; die falschen sind plausibel \
+(typische Fehlvorstellungen). Die Position der richtigen Option variiert.
+- Multiple Choice (mehrere richtig) → kind "zuordnung": 4 bis 6 Aussagen als "items", jede mit \
+"choices" ["zutreffend", "nicht zutreffend"]; mindestens eine trifft zu, mindestens eine nicht. \
+"question" ist die Frage ohne den Hinweis „(MC)“.
+Bezieht sich die Frage auf Unterlagen, die du nicht hast („in den Folien“, „im Beispiel“), \
+verwende das übliche Lehrbuchwissen zum Thema.
+Die Typkürzel „(SC)“, „(MC)“ und Punkteangaben wie „(1 Punkt)“ gehören nicht in "question".
 
 "answer": die offizielle Lösung wörtlich, inklusive Punkteangaben wie „(1 P.)“ und Hinweisen \
 wie „Individuelle Antworten“. Tabellenlösungen als Markdown-Tabelle mit denselben Zeilen und \
@@ -346,11 +361,12 @@ export async function generateQuestions(
 export interface ExtractedExam {
   questions: Question[]
   aiSolved: number // Aufgaben, deren Lösung die KI erstellt hat
+  expected: number // Hauptaufgaben laut Text (nur bei Text-Altklausuren, sonst 0)
   unsolved: number // Aufgaben ganz ohne brauchbare Lösung
   minutes: number // Prüfungszeit laut Deckblatt, 0 = unbekannt
 }
 
-export const AI_SOLUTION_NOTE = 'Die Altklausur enthält zu dieser Aufgabe keine Lösung – diese Musterlösung hat die KI erstellt. Bitte prüfen.'
+export const AI_SOLUTION_NOTE = 'Die Altklausur enthält zu dieser Aufgabe keine Lösung – die Lösung (und ggf. die Antwortmöglichkeiten) hat die KI erstellt. Bitte prüfen.'
 
 /** Übernimmt die Aufgaben einer Altklausur wörtlich. */
 export async function extractExam(client: Anthropic, model: string, section: Section): Promise<ExtractedExam> {
@@ -415,7 +431,7 @@ export async function extractExam(client: Anthropic, model: string, section: Sec
     }
     questions.push(q)
   }
-  return { questions, aiSolved, unsolved, minutes: Math.max(0, exam.minutes) }
+  return { questions, aiSolved, unsolved, minutes: Math.max(0, exam.minutes), expected: section.text ? countTasks(section.text) : 0 }
 }
 
 export async function gradeAnswer(client: Anthropic, model: string, q: Question, userAnswer: string): Promise<Grading> {

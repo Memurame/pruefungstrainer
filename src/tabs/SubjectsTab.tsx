@@ -169,7 +169,7 @@ export function SubjectsTab() {
     const n = counts[current] ?? 0
     const ok = await dialogs.confirm(
       'Fach löschen',
-      `Fach „${subjectName(current)}“ mit ${n} Fragen und allen Ergebnissen löschen?\n\nDie Dateien selbst bleiben unverändert.`,
+      `Fach „${subjectName(current)}“ mit ${n} Fragen, allen Ergebnissen und seinen Altklausur-Übungssätzen löschen?\n\nDie Dateien selbst bleiben unverändert.`,
       'Löschen', true,
     )
     if (!ok) return

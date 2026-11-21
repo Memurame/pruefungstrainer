@@ -199,9 +199,18 @@ export class Database {
 
   deleteSubject(id: number): void {
     this.tx(() => {
+      // Übungssätze, die dadurch leer werden (z. B. die einer Altklausur), verschwinden mit
+      const sets = this.all(
+        'SELECT DISTINCT p.set_id FROM practice_set_questions p JOIN questions q ON q.id = p.question_id WHERE q.subject_id=?', id,
+      ).map((r) => Number(r.set_id))
       this.run('DELETE FROM questions WHERE subject_id=?', id)
       this.run('DELETE FROM generated WHERE subject_id=?', id)
       this.run('DELETE FROM subjects WHERE id=?', id)
+      for (const setId of sets) {
+        if (!this.get('SELECT 1 AS x FROM practice_set_questions WHERE set_id=?', setId)) {
+          this.run('DELETE FROM practice_sets WHERE id=?', setId)
+        }
+      }
     })
   }
 

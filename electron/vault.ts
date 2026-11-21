@@ -239,14 +239,35 @@ export function noteQuestions(file: string, text: string, subjectId: number): Qu
   )
 }
 
-/** Altklausur als Text- oder Markdown-Datei: bleibt am Stück, damit Aufgaben und Lösungen zusammenbleiben. */
+const EXAM_TEXT_CHARS = 4_000 // Teilgröße langer Text-Altklausuren (rund 30–40 kurze Aufgaben)
+// Beginn einer Hauptaufgabe: „12. …“, „12) …“ oder „Aufgabe 12 …“ – nicht „4.1 …“ (Teilaufgabe)
+const TASK_START = /^\s*(?:Aufgabe\s+\d+\b|\d+[.)]\s)/i
+
+/** Zahl der Hauptaufgaben im Text (zur Kontrolle der Übernahme). */
+export function countTasks(text: string): number {
+  return splitLines(text).filter((l) => TASK_START.test(l)).length
+}
+
+/** Altklausur als Text- oder Markdown-Datei. Lange Texte werden geteilt, aber nur vor einer neuen
+ *  Hauptaufgabe, damit Ausgangslage und Teilaufgaben zusammenbleiben. */
 function textExam(file: string, raw: string, subjectId: number): Section[] {
   const text = stripFrontmatter(raw).trim()
   if (!text) return []
-  return [{
-    key: `${file}#K1`, path: file, kind: 'klausur', label: 'Altklausur', subject_id: subjectId,
-    hash: sha(`klausur:${text}`), text, pages: [0, 0],
-  }]
+  const parts: string[] = []
+  let cur: string[] = []
+  for (const line of splitLines(text)) {
+    if (TASK_START.test(line) && cur.join('\n').length > EXAM_TEXT_CHARS) {
+      parts.push(cur.join('\n').trim())
+      cur = []
+    }
+    cur.push(line)
+  }
+  if (cur.join('').trim()) parts.push(cur.join('\n').trim())
+  return parts.map((part, i) => ({
+    key: `${file}#K${i + 1}`, path: file, kind: 'klausur' as const,
+    label: parts.length > 1 ? `Altklausur Teil ${i + 1}` : 'Altklausur',
+    subject_id: subjectId, hash: sha(`klausur:${part}`), text: part, pages: [0, 0] as [number, number],
+  }))
 }
 
 // --- PDF --------------------------------------------------------------

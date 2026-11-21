@@ -117,6 +117,9 @@ async function runGenerate(req: GenerateRequest): Promise<number> {
       if (fresh < qs.length) msg += `, davon ${qs.length - fresh} aktualisiert`
       if (exam.aiSolved) msg += `, ${exam.aiSolved} mit KI-Lösung (bitte prüfen)`
       if (exam.unsolved) msg += `, ${exam.unsolved} ohne Lösung`
+      if (exam.expected > 0 && qs.length < exam.expected) {
+        msg += ` – Achtung: im Text stehen offenbar ${exam.expected} Aufgaben. Mit „Auswahl (neu) verarbeiten“ erneut versuchen.`
+      }
       msg += ` – Übungssatz „${stem(s.path)}“`
     } else {
       msg = `  ${fresh} Fragen erzeugt`
