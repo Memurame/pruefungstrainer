@@ -49,8 +49,9 @@ Ohne Key funktioniert alles außer dem Generieren von Fragen und der KI-Bewertun
 
 ## Ablauf
 
-1. **Fächer:** Fächer anlegen und ihnen beliebige Dateien (.md, .pdf) oder Ordner hinzufügen.
-   Bei Ordnern kommen neue Dateien automatisch dazu. Notizen werden an Überschriften, PDFs in
+1. **Fächer:** Fächer anlegen und ihnen beliebige Dateien (.md, .txt, .pdf) oder Ordner hinzufügen.
+   Bei Ordnern kommen neue Dateien automatisch dazu. Notizen werden an Überschriften, reine Texte
+   in Teile zu höchstens 12 000 Zeichen (Kodierung UTF-8, UTF-16 oder Windows-1252), PDFs in
    Blöcke zu 15 Seiten aufgeteilt. „Verarbeiten“ bearbeitet nur neue oder geänderte Abschnitte.
    Fächer lassen sich umbenennen und zusammenführen.
    **Altklausuren:** Über „Altklausur hinzufügen …“ (oder „Altklausur ein/aus“ für vorhandene

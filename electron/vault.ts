@@ -1,4 +1,4 @@
-// Liest die Quellen eines Fachs: teilt Markdown und PDFs in Abschnitte auf und findet manuell
+// Liest die Quellen eines Fachs: teilt Markdown, Text und PDFs in Abschnitte auf und findet manuell
 // notierte Fragen. Die Dateien werden nie verändert.
 
 import crypto from 'node:crypto'
@@ -13,7 +13,8 @@ const MD_MAX_CHARS = 12_000 // Größe eines Markdown-Abschnitts für die KI
 const MD_MIN_CHARS = 300 // kürzere Notizen lohnen keine Fragen
 const PDF_PAGES = 15 // Seiten pro PDF-Abschnitt
 const EXAM_PAGES = 100 // Altklausuren am Stück; mehr Seiten nimmt die API pro PDF nicht an
-const SUFFIXES = new Set(['.md', '.pdf'])
+const TEXT_SUFFIXES = new Set(['.md', '.txt']) // Notizen und reiner Text
+const SUFFIXES = new Set([...TEXT_SUFFIXES, '.pdf'])
 
 const HEADING = /^(#{1,3})\s+(.+?)\s*#*$/
 const FENCE = /^\s*(```|~~~)/
@@ -84,9 +85,8 @@ export async function scan(sources: Source[], ignored: Set<string>): Promise<Sca
       if (seen.has(id)) continue
       seen.add(id)
       try {
-        if (path.extname(file).toLowerCase() === '.md') {
-          // Zeilenenden vereinheitlichen
-          const text = fs.readFileSync(file, 'utf8').replace(/\r\n?/g, '\n')
+        if (TEXT_SUFFIXES.has(path.extname(file).toLowerCase())) {
+          const text = readText(file)
           result.sections.push(...splitMarkdown(file, text, src.subject_id))
           result.noteQuestions.push(...noteQuestions(file, text, src.subject_id))
         } else if (src.mode === 'klausur') {
@@ -103,7 +103,46 @@ export async function scan(sources: Source[], ignored: Set<string>): Promise<Sca
   return result
 }
 
-// --- Markdown ---------------------------------------------------------
+// --- Markdown und Text ------------------------------------------------
+
+/** Liest eine Textdatei: UTF-8 (mit oder ohne BOM), UTF-16 mit BOM, sonst Windows-1252
+ *  (typisch für ältere deutsche Texte aus Windows). Zeilenenden werden vereinheitlicht. */
+export function readText(file: string): string {
+  const buf = fs.readFileSync(file)
+  let text: string
+  if (buf[0] === 0xff && buf[1] === 0xfe) text = new TextDecoder('utf-16le').decode(buf)
+  else if (buf[0] === 0xfe && buf[1] === 0xff) text = new TextDecoder('utf-16be').decode(buf)
+  else {
+    try {
+      text = new TextDecoder('utf-8', { fatal: true }).decode(buf)
+    } catch {
+      text = new TextDecoder('windows-1252').decode(buf)
+    }
+  }
+  return text.replace(/\r\n?/g, '\n')
+}
+
+/** Teilt einen zu langen Block: erst an Leerzeilen, dann an Zeilen, notfalls an Satzenden. */
+function splitLong(body: string): string[] {
+  const parts = (text: string, sep: RegExp, glue: string): string[] => {
+    const pieces: string[] = []
+    let cur = ''
+    for (const part of text.split(sep)) {
+      if (cur && cur.length + part.length > MD_MAX_CHARS) {
+        pieces.push(cur)
+        cur = ''
+      }
+      cur += part + glue
+    }
+    if (cur.trim()) pieces.push(cur)
+    return pieces
+  }
+  return parts(body, /\n\n/, '\n\n').flatMap((p) =>
+    p.length <= MD_MAX_CHARS
+      ? [p]
+      : parts(p, /\n/, '\n').flatMap((q) => (q.length <= MD_MAX_CHARS ? [q] : parts(q, /(?<=[.!?])\s+/, ' '))),
+  )
+}
 
 function stripFrontmatter(text: string): string {
   if (text.startsWith('---\n')) {
@@ -133,20 +172,8 @@ export function splitMarkdown(file: string, raw: string, subjectId: number): Sec
   let label = ''
   let buf = ''
   for (const [heading, body] of blocks(text)) {
-    // Überlange Einzelabschnitte an Absätzen weiter zerteilen
-    let pieces = [body]
-    if (body.length > MD_MAX_CHARS) {
-      pieces = []
-      let cur = ''
-      for (const para of body.split('\n\n')) {
-        if (cur && cur.length + para.length > MD_MAX_CHARS) {
-          pieces.push(cur)
-          cur = ''
-        }
-        cur += para + '\n\n'
-      }
-      pieces.push(cur)
-    }
+    // Überlange Einzelabschnitte weiter zerteilen
+    const pieces = body.length > MD_MAX_CHARS ? splitLong(body) : [body]
     for (const piece of pieces) {
       if (buf && buf.length + piece.length > MD_MAX_CHARS) {
         chunks.push([label, buf])
@@ -159,12 +186,15 @@ export function splitMarkdown(file: string, raw: string, subjectId: number): Sec
   }
   if (buf.trim()) chunks.push([label, buf])
 
+  // Reiner Text hat meist keine Überschriften: dann Teile durchnummerieren
+  const plain = path.extname(file).toLowerCase() === '.txt'
   const sections: Section[] = []
   chunks.forEach(([lbl, body], i) => {
     const full = `# ${stem(file)}\n\n${body.trim()}`
     if (chunks.length > 1 && full.length < MD_MIN_CHARS) return
+    const label = plain && lbl === 'Anfang' ? (chunks.length > 1 ? `Teil ${i + 1}` : 'Ganzer Text') : lbl
     sections.push({
-      key: `${file}#${i}`, path: file, kind: 'md', label: lbl, subject_id: subjectId, hash: sha(full), text: full, pages: [0, 0],
+      key: `${file}#${i}`, path: file, kind: 'md', label, subject_id: subjectId, hash: sha(full), text: full, pages: [0, 0],
     })
   })
   return sections

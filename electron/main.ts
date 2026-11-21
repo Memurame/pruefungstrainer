@@ -195,7 +195,7 @@ const handlers: Handlers = {
       title: exams ? 'Altklausuren mit Lösungen hinzufügen' : 'Dateien hinzufügen',
       defaultPath: startDir(),
       properties: ['openFile', 'multiSelections'],
-      filters: exams ? [{ name: 'PDFs', extensions: ['pdf'] }] : [{ name: 'Notizen und PDFs', extensions: ['md', 'pdf'] }],
+      filters: exams ? [{ name: 'PDFs', extensions: ['pdf'] }] : [{ name: 'Notizen, Texte und PDFs', extensions: ['md', 'txt', 'pdf'] }],
     })
     if (r.canceled || !r.filePaths.length) return false
     for (const f of r.filePaths) db.addSource(subjectId, fs.realpathSync(f), 'file', exams ? 'klausur' : 'lernstoff')
