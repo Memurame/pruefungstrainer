@@ -192,7 +192,7 @@ export function SubjectsTab() {
   const toggleExam = async () => {
     const chosen = chosenSources()
     if (!chosen.length) {
-      await dialogs.alert('Altklausur', 'Wähle oben eine Datei oder einen Ordner (oberste Ebene) aus. Bei Ordnern gelten alle PDFs darin als Altklausuren.')
+      await dialogs.alert('Altklausur', 'Wähle oben eine Datei oder einen Ordner (oberste Ebene) aus. Bei Ordnern gelten alle Dateien darin (PDF, Text, Markdown) als Altklausuren.')
       return
     }
     for (const s of chosen) await api.setSourceMode(s.id, s.mode === 'klausur' ? 'lernstoff' : 'klausur')

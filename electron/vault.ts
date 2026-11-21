@@ -85,7 +85,10 @@ export async function scan(sources: Source[], ignored: Set<string>): Promise<Sca
       if (seen.has(id)) continue
       seen.add(id)
       try {
-        if (TEXT_SUFFIXES.has(path.extname(file).toLowerCase())) {
+        const isText = TEXT_SUFFIXES.has(path.extname(file).toLowerCase())
+        if (isText && src.mode === 'klausur') {
+          result.sections.push(...textExam(file, readText(file), src.subject_id))
+        } else if (isText) {
           const text = readText(file)
           result.sections.push(...splitMarkdown(file, text, src.subject_id))
           result.noteQuestions.push(...noteQuestions(file, text, src.subject_id))
@@ -234,6 +237,16 @@ export function noteQuestions(file: string, text: string, subjectId: number): Qu
       ext_key: noteKey(subjectId, file, q),
     }),
   )
+}
+
+/** Altklausur als Text- oder Markdown-Datei: bleibt am Stück, damit Aufgaben und Lösungen zusammenbleiben. */
+function textExam(file: string, raw: string, subjectId: number): Section[] {
+  const text = stripFrontmatter(raw).trim()
+  if (!text) return []
+  return [{
+    key: `${file}#K1`, path: file, kind: 'klausur', label: 'Altklausur', subject_id: subjectId,
+    hash: sha(`klausur:${text}`), text, pages: [0, 0],
+  }]
 }
 
 // --- PDF --------------------------------------------------------------

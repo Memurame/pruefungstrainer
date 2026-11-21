@@ -54,11 +54,12 @@ Ohne Key funktioniert alles außer dem Generieren von Fragen und der KI-Bewertun
    in Teile zu höchstens 12 000 Zeichen (Kodierung UTF-8, UTF-16 oder Windows-1252), PDFs in
    Blöcke zu 15 Seiten aufgeteilt. „Verarbeiten“ bearbeitet nur neue oder geänderte Abschnitte.
    Fächer lassen sich umbenennen und zusammenführen.
-   **Altklausuren:** Über „Altklausur hinzufügen …“ (oder „Altklausur ein/aus“ für vorhandene
-   Dateien und Ordner) werden alte Prüfungen mit Lösung wörtlich übernommen statt neue Fragen zu
+   **Altklausuren** (PDF, .txt oder .md): Über „Altklausur hinzufügen …“ (oder „Altklausur ein/aus“
+   für vorhandene Dateien und Ordner) werden alte Prüfungen wörtlich übernommen statt neue Fragen zu
    erfinden: jede (Teil-)Aufgabe mit ihrer Originalpunktzahl, die offizielle Lösung als
-   Musterlösung. Rot gedruckter Text gilt als Lösung; fehlt sie zu einer Aufgabe, steht das in der
-   Erläuterung. Ankreuzen, Unterstreichen und Zuordnen werden zu „Zuordnung“-Fragen, die Zeile
+   Musterlösung. In PDFs gilt rot gedruckter Text als Lösung. Fehlt die Lösung zu einer Aufgabe
+   (oder hat die Klausur gar keine), erstellt die KI eine – solche Aufgaben sind in der Erläuterung
+   als KI-Lösung markiert und sollten vor dem Freigeben geprüft werden. Ankreuzen, Unterstreichen und Zuordnen werden zu „Zuordnung“-Fragen, die Zeile
    für Zeile automatisch bewertet werden. Erneutes Verarbeiten („Auswahl (neu) verarbeiten“)
    aktualisiert übernommene Aufgaben; Freigaben und Ergebnisse bleiben erhalten.
 2. **Fragen:** Generierte Fragen prüfen, bearbeiten, freigeben; eigene Fragen anlegen.

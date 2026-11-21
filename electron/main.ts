@@ -115,6 +115,7 @@ async function runGenerate(req: GenerateRequest): Promise<number> {
     if (exam) {
       msg = `  ${qs.length} Aufgaben erkannt (${qs.reduce((sum, q) => sum + maxPoints(q), 0)} P.)`
       if (fresh < qs.length) msg += `, davon ${qs.length - fresh} aktualisiert`
+      if (exam.aiSolved) msg += `, ${exam.aiSolved} mit KI-Lösung (bitte prüfen)`
       if (exam.unsolved) msg += `, ${exam.unsolved} ohne Lösung`
       msg += ` – Übungssatz „${stem(s.path)}“`
     } else {
@@ -192,10 +193,10 @@ const handlers: Handlers = {
     }
     const exams = what === 'exams'
     const r = await dialog.showOpenDialog(win, {
-      title: exams ? 'Altklausuren mit Lösungen hinzufügen' : 'Dateien hinzufügen',
+      title: exams ? 'Altklausuren hinzufügen' : 'Dateien hinzufügen',
       defaultPath: startDir(),
       properties: ['openFile', 'multiSelections'],
-      filters: exams ? [{ name: 'PDFs', extensions: ['pdf'] }] : [{ name: 'Notizen, Texte und PDFs', extensions: ['md', 'txt', 'pdf'] }],
+      filters: exams ? [{ name: 'Altklausuren (PDF, Text)', extensions: ['pdf', 'txt', 'md'] }] : [{ name: 'Notizen, Texte und PDFs', extensions: ['md', 'txt', 'pdf'] }],
     })
     if (r.canceled || !r.filePaths.length) return false
     for (const f of r.filePaths) db.addSource(subjectId, fs.realpathSync(f), 'file', exams ? 'klausur' : 'lernstoff')

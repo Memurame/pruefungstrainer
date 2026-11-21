@@ -154,12 +154,13 @@ anderen falsch sind).
 `
 
 const EXTRACT_SYSTEM = `\
-Du überträgst eine alte Prüfung (Altklausur) mit offizieller Lösung in einen Prüfungstrainer. \
-Du schreibst ab, du erfindest nichts: Aufgabentexte und Lösungen werden wörtlich übernommen.
+Du überträgst eine alte Prüfung (Altklausur) in einen Prüfungstrainer. Aufgabentexte und \
+vorhandene offizielle Lösungen werden wörtlich übernommen, nichts davon wird verändert oder erfunden.
 
-Du bekommst das PDF und zusätzlich seinen Text. Im Text steht alles, was im PDF rot gedruckt ist, \
-in ⟦…⟧ – das ist die offizielle Lösung. Alles andere ist die Aufgabenstellung. Ist nichts markiert, \
-erkenne die Lösung am Layout (andere Farbe, Handschrift, Abschnitt „Lösungen“ am Ende o. Ä.).
+Du bekommst entweder das PDF und zusätzlich seinen Text oder nur den Text der Klausur. Beim PDF steht \
+im Text alles, was rot gedruckt ist, in ⟦…⟧ – das ist die offizielle Lösung. Alles andere ist die \
+Aufgabenstellung. Ist nichts markiert, erkenne die Lösung am Layout (andere Farbe, Handschrift, \
+Abschnitt „Lösungen“ am Ende o. Ä.) bzw. im reinen Text an Hinweisen wie „Lösung:“.
 
 Aufteilung:
 - Jede Aufgabe bzw. Teilaufgabe mit eigener Punktzahl wird eine eigene Frage (z. B. 2.1, 2.2 \
@@ -195,9 +196,14 @@ wie „Individuelle Antworten“. Tabellenlösungen als Markdown-Tabelle mit den
 Spalten wie die Tabelle der Frage, mehrere Punkte in einer Zelle mit „<br>“ trennen. Bei "mc" und "zuordnung" \
 darf "answer" leer bleiben.
 
-"points": Punktzahl der Frage laut Klausur. "page": Seite im PDF, auf der die Aufgabe beginnt.
-"has_solution": false, wenn die Klausur zu dieser Aufgabe keine Lösung enthält. Dann bleibt \
-"answer" leer und bei "mc"/"zuordnung" ist der jeweilige "correct_index" -1 – nicht selbst lösen.
+"points": Punktzahl der Frage laut Klausur, 0 wenn die Klausur keine angibt. "page": Seite im PDF, \
+auf der die Aufgabe beginnt; 0 bei reinem Text.
+"has_solution": true, wenn die Klausur zu dieser Aufgabe eine offizielle Lösung enthält. Fehlt sie, \
+setze "has_solution" auf false und erarbeite selbst eine fachlich korrekte Musterlösung: bei "frei" \
+in "answer" die Kernpunkte, die für die volle Punktzahl genannt werden müssen (mit Punkteaufteilung \
+wie „(1 P.)“, wenn die Punktzahl bekannt ist; Tabellen wie oben), bei "mc"/"zuordnung" den richtigen \
+"correct_index". Ist eine Aufgabe ohne Zusatzwissen nicht sicher lösbar, gib die plausibelste Lösung \
+an und nenne die Unsicherheit am Ende von "answer".
 "minutes" (oberste Ebene): Prüfungszeit in Minuten laut Deckblatt, 0 wenn nicht angegeben.
 Unbenutzte Felder: "options" [] und "correct_index" -1 außer bei "mc", "items" [] außer bei \
 "zuordnung".
@@ -339,29 +345,47 @@ export async function generateQuestions(
 
 export interface ExtractedExam {
   questions: Question[]
-  unsolved: number // Aufgaben ohne (vollständige) Lösung
+  aiSolved: number // Aufgaben, deren Lösung die KI erstellt hat
+  unsolved: number // Aufgaben ganz ohne brauchbare Lösung
   minutes: number // Prüfungszeit laut Deckblatt, 0 = unbekannt
 }
 
+export const AI_SOLUTION_NOTE = 'Die Altklausur enthält zu dieser Aufgabe keine Lösung – diese Musterlösung hat die KI erstellt. Bitte prüfen.'
+
 /** Übernimmt die Aufgaben einer Altklausur wörtlich. */
 export async function extractExam(client: Anthropic, model: string, section: Section): Promise<ExtractedExam> {
-  const data = await pdfExcerpt(section.path, section.pages)
-  const [text, redChars] = await markedText(section.path, section.pages)
-  const offset = section.pages[0]
-  const hint = redChars ? '' : '\nIm Text ist nichts rot markiert – erkenne die Lösungen am Layout oder setze has_solution auf false.'
-  const instruction = `Übertrage alle Aufgaben dieser Altklausur (${basename(section.path)}). Seite 1 des PDFs ist ` +
-    `Seite ${offset + 1} des Originals; gib in "page" die Originalseite an.${hint}\n\n<text>\n${text}\n</text>`
-  const raw = await call(client, model, EXTRACT_SYSTEM, [pdfBlock(data), { type: 'text', text: instruction }], EXAM_SCHEMA, 64000)
+  let content: Anthropic.Beta.BetaContentBlockParam[]
+  if (section.text) {
+    // Altklausur als Text- oder Markdown-Datei
+    content = [{
+      type: 'text',
+      text: `Übertrage alle Aufgaben dieser Altklausur (${basename(section.path)}). Sie liegt nur als Text vor; ` +
+        `setze "page" auf 0.\n\n<text>\n${section.text}\n</text>`,
+    }]
+  } else {
+    const data = await pdfExcerpt(section.path, section.pages)
+    const [text, redChars] = await markedText(section.path, section.pages)
+    const offset = section.pages[0]
+    const hint = redChars ? '' : '\nIm Text ist nichts rot markiert – erkenne die Lösungen am Layout; fehlen sie, setze has_solution auf false.'
+    content = [pdfBlock(data), {
+      type: 'text',
+      text: `Übertrage alle Aufgaben dieser Altklausur (${basename(section.path)}). Seite 1 des PDFs ist ` +
+        `Seite ${offset + 1} des Originals; gib in "page" die Originalseite an.${hint}\n\n<text>\n${text}\n</text>`,
+    }]
+  }
+  const raw = await call(client, model, EXTRACT_SYSTEM, content, EXAM_SCHEMA, 64000)
   const exam = parse(ExamSet, raw)
 
   const questions: Question[] = []
   let unsolved = 0
+  let aiSolved = 0
   for (const t of exam.tasks) {
     let qtext = t.question.trim()
     if (t.heading.trim()) qtext = `**${t.heading.trim()}**\n\n${qtext}`
     const q = emptyQuestion({
       kind: t.kind, text: qtext, answer: t.answer.trim(), points: Math.max(0, t.points),
-      subject_id: section.subject_id, source_path: section.path, source_loc: `Aufgabe ${t.number}, S. ${t.page}`,
+      subject_id: section.subject_id, source_path: section.path,
+      source_loc: t.page > 0 ? `Aufgabe ${t.number}, S. ${t.page}` : `Aufgabe ${t.number}`,
       origin: 'klausur', approved: false, ext_key: examKey(section.subject_id, section.path, t.number),
     })
     let solved: boolean
@@ -382,13 +406,16 @@ export async function extractExam(client: Anthropic, model: string, section: Sec
     } else {
       solved = Boolean(q.answer)
     }
-    if (!(t.has_solution && solved)) {
+    if (!solved) {
       unsolved++
-      q.explanation = 'Die Altklausur enthält zu dieser Aufgabe keine (vollständige) Lösung.'
+      q.explanation = 'Zu dieser Aufgabe gibt es keine Lösung – ergänze sie im Tab „Fragen“.'
+    } else if (!t.has_solution) {
+      aiSolved++
+      q.explanation = AI_SOLUTION_NOTE
     }
     questions.push(q)
   }
-  return { questions, unsolved, minutes: Math.max(0, exam.minutes) }
+  return { questions, aiSolved, unsolved, minutes: Math.max(0, exam.minutes) }
 }
 
 export async function gradeAnswer(client: Anthropic, model: string, q: Question, userAnswer: string): Promise<Grading> {
