@@ -1,9 +1,6 @@
-__pycache__/
-*.pyc
+node_modules/
+dist/
+dist-electron/
 result
 result-*
-*.egg-info/
-build/
-dist/
-.venv/
 *.pdf

@@ -3,6 +3,8 @@
 Probeprüfungen aus Obsidian-Notizen und PDFs, organisiert in selbst angelegten Fächern. Fragen werden mit Claude
 generiert, eigene Fragen lassen sich ergänzen.
 
+Desktop-App mit Electron, React und TypeScript; die Daten liegen lokal in SQLite.
+
 ## Starten
 
 ```bash
@@ -33,12 +35,23 @@ environment.systemPackages = [ pkgs.pruefungstrainer ];
 
 Aktualisieren: `nix flake update pruefungstrainer && sudo nixos-rebuild switch`.
 
+## API-Key
+
+Unter **Einstellungen** eintragen und „Key speichern“ klicken. Die App prüft den Key und speichert ihn
+verschlüsselt; den Schlüssel dazu verwaltet dein Schlüsselbund (GNOME Keyring, KWallet). Ohne Schlüsselbund liegt
+der Key im Klartext in `~/.config/pruefungstrainer/api-key.json`, die nur du lesen kannst – die Einstellungen
+zeigen an, was zutrifft.
+
+Alternativ liest die App die Umgebungsvariable `ANTHROPIC_API_KEY`; sie hat Vorrang vor dem gespeicherten Key.
+
+Ohne Key funktioniert alles außer dem Generieren von Fragen und der KI-Bewertung von Freitext
+(Freitext bewertest du dann selbst).
+
 ## Ablauf
 
-1. **Datei → Einstellungen:** API-Key eintragen (oder `ANTHROPIC_API_KEY` setzen).
-2. **Fächer:** Fächer anlegen und ihnen beliebige Dateien (.md, .pdf) oder Ordner hinzufügen.
+1. **Fächer:** Fächer anlegen und ihnen beliebige Dateien (.md, .pdf) oder Ordner hinzufügen.
    Bei Ordnern kommen neue Dateien automatisch dazu. Notizen werden an Überschriften, PDFs in
-   Blöcke zu 15 Seiten aufgeteilt. „Generieren“ verarbeitet nur neue oder geänderte Abschnitte.
+   Blöcke zu 15 Seiten aufgeteilt. „Verarbeiten“ bearbeitet nur neue oder geänderte Abschnitte.
    Fächer lassen sich umbenennen und zusammenführen.
    **Altklausuren:** Über „Altklausur hinzufügen …“ (oder „Altklausur ein/aus“ für vorhandene
    Dateien und Ordner) werden alte Prüfungen mit Lösung wörtlich übernommen statt neue Fragen zu
@@ -47,14 +60,14 @@ Aktualisieren: `nix flake update pruefungstrainer && sudo nixos-rebuild switch`.
    Erläuterung. Ankreuzen, Unterstreichen und Zuordnen werden zu „Zuordnung“-Fragen, die Zeile
    für Zeile automatisch bewertet werden. Erneutes Verarbeiten („Auswahl (neu) verarbeiten“)
    aktualisiert übernommene Aufgaben; Freigaben und Ergebnisse bleiben erhalten.
-3. **Fragen:** Generierte Fragen prüfen, bearbeiten, freigeben; eigene Fragen anlegen.
-   Markierte Fragen mit „Zu Übungssatz …“ in einen Übungssatz übernehmen.
-   **Übungssätze:** feste Zusammenstellungen mit eigener Reihenfolge und Zeitlimit. Jede
+2. **Fragen:** Generierte Fragen prüfen, bearbeiten, freigeben; eigene Fragen anlegen.
+   Markierte Fragen (Strg/Umschalt für mehrere) mit „Zu Übungssatz …“ in einen Übungssatz übernehmen.
+3. **Übungssätze:** feste Zusammenstellungen mit eigener Reihenfolge und Zeitlimit. Jede
    Altklausur wird automatisch zu einem Übungssatz (Zeitlimit laut Deckblatt).
-4. **Prüfung:** Fächer, Anzahl, Fragetypen und Zeitlimit wählen – oder einen Übungssatz (angeboten werden die mit Fragen aus den gewählten
-   Fächern), der dann
-   vollständig in seiner Reihenfolge gestellt wird. Tabellen mit leeren Zellen füllst du direkt
-   aus; im Ergebnis stehen deine Einträge Zeile für Zeile neben der Musterlösung. Multiple Choice und Zuordnungen werden direkt
+4. **Prüfung:** Fächer, Anzahl, Fragetypen und Zeitlimit wählen – oder einen Übungssatz (angeboten
+   werden die mit Fragen aus den gewählten Fächern), der dann vollständig in seiner Reihenfolge
+   gestellt wird. Tabellen mit leeren Zellen füllst du direkt aus; im Ergebnis stehen deine
+   Einträge Zeile für Zeile neben der Musterlösung. Multiple Choice und Zuordnungen werden direkt
    ausgewertet, Freitext von der KI nach der Punktzahl der Frage (mit Feedback). Bewertungen
    lassen sich anpassen.
 5. **Statistik:** Erfolgsquote pro Fach und die schwächsten Fragen.
@@ -72,15 +85,36 @@ Die Frage vor `::` muss mit `?` enden. Damit werden Dataview-Felder (`status:: x
 
 ## Export und Import
 
-**Datei → Exportieren …** speichert die gewählten Fächer mit ihren Fragen und den zugehörigen
-Übungssätzen als JSON-Datei. **Datei → Importieren …** liest sie wieder ein: Fächer und
+**Exportieren …** speichert die gewählten Fächer mit ihren Fragen und den zugehörigen
+Übungssätzen als JSON-Datei. **Importieren …** liest sie wieder ein: Fächer und
 Übungssätze mit gleichem Namen werden zusammengeführt, vorhandene Fragen nicht doppelt
 angelegt. Quellen (Dateipfade) und Prüfungsergebnisse werden nicht übertragen.
 
 ## Daten
 
 - Einstellungen: `~/.config/pruefungstrainer/config.json`
-- Fragen und Ergebnisse: `~/.local/share/pruefungstrainer/fragen.sqlite3`
+- Fragen und Ergebnisse: `~/.local/share/pruefungstrainer/pruefungstrainer.sqlite3`
+- Tägliche Sicherungen (die letzten 14): `~/.local/share/pruefungstrainer/backups/`
 - Deine Dateien werden nur gelesen, nie verändert.
-- Beim Update von Version 0.1 wird vorher eine Sicherung angelegt:
-  `~/.local/share/pruefungstrainer/fragen.v1-backup.sqlite3`
+
+## Entwicklung
+
+```bash
+nix develop          # Node und Electron
+npm install
+npm run dev          # Vite-Server für die Oberfläche (in einem Terminal)
+npm run dev:app      # Electron gegen den Vite-Server (im zweiten Terminal)
+npm run typecheck
+npm start            # fertig bauen und starten
+```
+
+Aufbau:
+
+- `electron/` – Hauptprozess: Datenbank (`node:sqlite`), Einlesen der Quellen, PDF-Auswertung (pdf.js,
+  pdf-lib), Claude-Aufrufe, Export/Import. Wird mit esbuild samt Abhängigkeiten gebündelt.
+- `src/` – Oberfläche (React, Tailwind). Greift nur über `window.api` (siehe `electron/preload.ts`) auf
+  den Hauptprozess zu.
+- `shared/` – Typen und reine Hilfsfunktionen für beide Seiten.
+
+Nach Änderungen an den npm-Abhängigkeiten den Hash in `package.nix` erneuern:
+`nix run nixpkgs#prefetch-npm-deps -- package-lock.json`.

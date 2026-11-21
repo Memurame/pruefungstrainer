@@ -1,0 +1,14 @@
+import 'katex/dist/katex.min.css'
+import './index.css'
+import { StrictMode } from 'react'
+import { createRoot } from 'react-dom/client'
+import App from './App'
+import { DialogProvider } from './components/dialogs'
+
+createRoot(document.getElementById('root')!).render(
+  <StrictMode>
+    <DialogProvider>
+      <App />
+    </DialogProvider>
+  </StrictMode>,
+)
