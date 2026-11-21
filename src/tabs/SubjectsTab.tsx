@@ -327,6 +327,12 @@ export function SubjectsTab() {
   }
 
   const cancel = async () => {
+    const ok = await dialogs.confirm(
+      'Verarbeitung abbrechen',
+      'Nach dem aktuellen Abschnitt aufhören? Bereits verarbeitete Abschnitte bleiben erhalten, die übrigen kannst du später verarbeiten.',
+      'Abbrechen', true,
+    )
+    if (!ok) return
     await api.cancelGenerate()
     addLog('Wird nach dem aktuellen Abschnitt abgebrochen …')
   }
@@ -425,24 +431,28 @@ export function SubjectsTab() {
           <Check label="Freitext" checked={kinds.frei} onChange={(v) => setKinds((k) => ({ ...k, frei: v }))} />
           <span className="text-[12px] italic text-muted">Altklausuren werden immer vollständig übernommen.</span>
           <div className="ml-auto flex gap-1.5">
-            {busy === 'generate' ? (
-              <Button variant="danger" onClick={cancel}>Abbrechen</Button>
-            ) : (
-              <>
-                <Button variant="primary" onClick={() => generate('subject')} disabled={busy !== null || current == null}>
-                  Neue/geänderte Abschnitte verarbeiten
-                </Button>
-                <Button onClick={() => generate('selection')} disabled={busy !== null || !selected.size}>Auswahl (neu) verarbeiten</Button>
-                <Button onClick={() => generate('all')} disabled={busy !== null} title="Neue/geänderte Abschnitte aller Fächer verarbeiten">
-                  Alle Fächer
-                </Button>
-              </>
-            )}
+            {/* Die Knöpfe bleiben während der Verarbeitung stehen (nur gesperrt), damit ein zweiter
+                Klick nicht versehentlich „Abbrechen“ trifft */}
+            <Button variant="primary" onClick={() => generate('subject')} disabled={busy !== null || current == null}>
+              Neue/geänderte Abschnitte verarbeiten
+            </Button>
+            <Button onClick={() => generate('selection')} disabled={busy !== null || !selected.size}>Auswahl (neu) verarbeiten</Button>
+            <Button onClick={() => generate('all')} disabled={busy !== null} title="Neue/geänderte Abschnitte aller Fächer verarbeiten">
+              Alle Fächer
+            </Button>
           </div>
         </div>
         {busy && (
-          <div className="px-3 pb-2">
-            <ProgressBar done={prog.done} total={busy === 'scan' ? 0 : prog.total} />
+          <div className="flex items-center gap-3 px-3 pb-2">
+            <div className="flex-1"><ProgressBar done={prog.done} total={busy === 'scan' ? 0 : prog.total} /></div>
+            {busy === 'generate' && (
+              <>
+                <span className="text-[12px] text-muted tabular-nums">
+                  {prog.total ? `Abschnitt ${Math.min(prog.done + 1, prog.total)} von ${prog.total}` : 'Startet …'}
+                </span>
+                <Button variant="danger" onClick={cancel}>Verarbeitung abbrechen</Button>
+              </>
+            )}
           </div>
         )}
         <div ref={logRef} className="h-28 overflow-y-auto border-t border-line bg-surface-2/50 px-3 py-2 font-mono text-[12px] leading-relaxed text-muted">
