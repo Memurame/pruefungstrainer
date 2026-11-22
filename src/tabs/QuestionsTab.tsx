@@ -33,6 +33,9 @@ export function QuestionsTab() {
   const [selectedIds, setSelectedIds] = useState<number[]>([])
   const [editing, setEditing] = useState<Question | null>(null)
   const anchor = useRef<number | null>(null)
+  const [titling, setTitling] = useState<{ done: number; total: number } | null>(null)
+
+  useEffect(() => api.onProgress((p) => p.job === 'titles' && setTitling({ done: p.done, total: p.total })), [])
 
   useEffect(() => {
     void Promise.all([api.questions(), api.subjects()]).then(([qs, ss]) => {
@@ -98,6 +101,22 @@ export function QuestionsTab() {
       app.bump()
       app.notify(`${sel.length} Frage(n) zum Übungssatz hinzugefügt.`)
     }
+  }
+
+  /** Markierte Fragen bekommen (neue) Titel; ohne Auswahl alle angezeigten Fragen ohne Titel. */
+  const makeTitles = async () => {
+    const targets = sel.length ? sel : shown.filter((q) => !q.title.trim())
+    if (!targets.length) {
+      await dialogs.alert('Titel erzeugen', 'Alle angezeigten Fragen haben schon einen Titel. Markiere Fragen, um ihre Titel neu zu erzeugen.')
+      return
+    }
+    const what = sel.length ? `${targets.length} markierte Frage(n)` : `${targets.length} angezeigte Frage(n) ohne Titel`
+    if (!(await dialogs.confirm('Titel erzeugen', `Die KI erstellt Titel für ${what}.`, 'Titel erzeugen'))) return
+    setTitling({ done: 0, total: targets.length })
+    const n = await app.guard(() => api.generateTitles(targets.map((q) => q.id!)), 'Titel erzeugen')
+    setTitling(null)
+    app.bump()
+    if (n !== undefined) app.notify(`${n} Titel erstellt.`)
   }
 
   const changeSubject = async () => {
@@ -175,7 +194,7 @@ export function QuestionsTab() {
           </div>
         </Panel>
 
-        <Panel title="Vorschau" className="min-w-0 flex-[2]">
+        <Panel title={sel[0] ? questionTitle(sel[0]) : "Vorschau"} className="min-w-0 flex-[2]">
           <div className="min-h-0 flex-1 overflow-y-auto p-4">
             {sel[0] ? <Markdown text={questionMarkdown(sel[0])} /> : <Empty>Wähle eine Frage aus.</Empty>}
           </div>
@@ -190,6 +209,9 @@ export function QuestionsTab() {
         <Button onClick={approveAll} disabled={!shown.length}>Alle angezeigten freigeben</Button>
         <Button onClick={addToSet} disabled={!sel.length}>Zu Übungssatz …</Button>
         <Button onClick={changeSubject} disabled={!sel.length}>Fach ändern …</Button>
+        <Button onClick={makeTitles} disabled={titling !== null || !shown.length} title="Markierte Fragen – oder ohne Auswahl alle angezeigten ohne Titel">
+          {titling ? `Titel … ${titling.done}/${titling.total}` : "Titel erzeugen"}
+        </Button>
         <Button onClick={() => sel[0] && api.openSource(sel[0].source_path)} disabled={!sel[0]?.source_path}>Quelle öffnen</Button>
         <Button variant="danger" className="ml-auto" onClick={remove} disabled={!sel.length}>Löschen</Button>
       </div>

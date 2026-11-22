@@ -25,6 +25,7 @@ export class AIError extends Error {
 const GeneratedSet = z.object({
   questions: z.array(z.object({
     kind: z.string(),
+    title: z.string(),
     question: z.string(),
     options: z.array(z.string()),
     correct_index: z.number().int(),
@@ -41,6 +42,7 @@ const ExamSet = z.object({
     number: z.string(),
     heading: z.string(),
     kind: z.enum(['mc', 'frei', 'zuordnung']),
+    title: z.string(),
     question: z.string(),
     options: z.array(z.string()),
     correct_index: z.number().int(),
@@ -63,6 +65,7 @@ const GENERATE_SCHEMA = {
         type: 'object',
         properties: {
           kind: { type: 'string', enum: ['mc', 'frei'] },
+          title: { type: 'string' },
           question: { type: 'string' },
           options: { type: 'array', items: { type: 'string' } },
           correct_index: { type: 'integer' },
@@ -71,7 +74,7 @@ const GENERATE_SCHEMA = {
           difficulty: { type: 'integer' },
           location: { type: 'string' },
         },
-        required: ['kind', 'question', 'options', 'correct_index', 'answer', 'explanation', 'difficulty', 'location'],
+        required: ['kind', 'title', 'question', 'options', 'correct_index', 'answer', 'explanation', 'difficulty', 'location'],
         additionalProperties: false,
       },
     },
@@ -92,6 +95,7 @@ const EXAM_SCHEMA = {
           number: { type: 'string' },
           heading: { type: 'string' },
           kind: { type: 'string', enum: ['mc', 'frei', 'zuordnung'] },
+          title: { type: 'string' },
           question: { type: 'string' },
           options: { type: 'array', items: { type: 'string' } },
           correct_index: { type: 'integer' },
@@ -113,7 +117,7 @@ const EXAM_SCHEMA = {
           page: { type: 'integer' },
           has_solution: { type: 'boolean' },
         },
-        required: ['number', 'heading', 'kind', 'question', 'options', 'correct_index', 'items', 'answer', 'points', 'page', 'has_solution'],
+        required: ['number', 'heading', 'kind', 'title', 'question', 'options', 'correct_index', 'items', 'answer', 'points', 'page', 'has_solution'],
         additionalProperties: false,
       },
     },
@@ -128,6 +132,36 @@ const GRADE_SCHEMA = {
   required: ['points', 'feedback'],
   additionalProperties: false,
 }
+
+// Kurztitel für Listen (Fragen, Übungssätze, Ergebnis, Statistik)
+const TITLE_RULE = `kurzer, aussagekräftiger Titel für Listen, 3 bis 8 Wörter, der Thema und Kern \
+der Frage nennt, z. B. „SWOT-Analyse: Stärken und Chancen“, „Marktkapazität berechnen“ oder \
+„Aktives vs. passives Marketing: Vorteile“. Er wiederholt nicht den Fragetext, enthält keine \
+Floskeln wie „Frage zu …“, „Welche Aussage …“, „Kreuzen Sie an“ und verrät die Lösung nicht. \
+In der Sprache der Frage.`
+
+const TITLE_SYSTEM = `\
+Du gibst Prüfungsfragen einen Titel für die Übersicht im Prüfungstrainer. Je Frage: ${TITLE_RULE} \
+Fragen zum selben Thema sollen unterscheidbare Titel bekommen. Gib für jede Frage ihre "id" zurück.`
+
+const TITLE_SCHEMA = {
+  type: 'object',
+  properties: {
+    titles: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: { id: { type: 'integer' }, title: { type: 'string' } },
+        required: ['id', 'title'],
+        additionalProperties: false,
+      },
+    },
+  },
+  required: ['titles'],
+  additionalProperties: false,
+}
+
+const TitleSet = z.object({ titles: z.array(z.object({ id: z.number().int(), title: z.string() })) })
 
 const GENERATE_SYSTEM = `\
 Du erstellst Prüfungsfragen aus Lernmaterial eines Studierenden bzw. Auszubildenden. \
@@ -154,6 +188,7 @@ mit den Kernpunkten, die für volle Punktzahl (3 Punkte) genannt werden müssen.
 anderen falsch sind).
 - "difficulty": 1 = leicht, 2 = mittel, 3 = schwer.
 - "location": wo im Material die Antwort steht (Überschrift oder Seitenzahl).
+- "title": ${TITLE_RULE}
 `
 
 const EXTRACT_SYSTEM = `\
@@ -183,6 +218,7 @@ oder 7a, 7b). "number" ist die Nummer aus der Klausur ohne Leerzeichen ("4.1", "
 Hauptaufgabe davor, z. B. "Aufgabe 11: Vertragslehre – a)" oder \
 "Aufgabe 4: Fallbeispiel „Hotel Alpenstern“ – 4.1 Zielgrössen". Sie wird über der Frage \
 angezeigt und gehört nicht zusätzlich in "question".
+- "title": ${TITLE_RULE}
 - Gehört eine Ausgangslage oder ein Fallbeispiel zu mehreren Teilaufgaben, steht sie vollständig \
 am Anfang jeder dieser Fragen.
 - Deckblatt, Punktetabelle, Kopf- und Fußzeilen und Hinweise wie „Lösung“ weglassen.
@@ -395,7 +431,7 @@ export async function generateQuestions(
     // unbrauchbare MC-Frage verwerfen
     if (mc && !(g.options.length >= 2 && g.correct_index >= 0 && g.correct_index < g.options.length)) continue
     questions.push(emptyQuestion({
-      kind: g.kind as Kind, text: g.question, options: mc ? g.options : [], correct_index: mc ? g.correct_index : -1,
+      kind: g.kind as Kind, title: g.title.trim(), text: g.question, options: mc ? g.options : [], correct_index: mc ? g.correct_index : -1,
       answer: g.answer, explanation: g.explanation, difficulty: Math.min(3, Math.max(1, g.difficulty)),
       subject_id: section.subject_id, source_path: section.path, source_loc: g.location || section.label,
       origin: 'ki', approved: false,
@@ -453,7 +489,7 @@ export async function extractExam(client: Anthropic, model: string, section: Sec
     let qtext = t.question.trim()
     if (t.heading.trim()) qtext = `**${t.heading.trim()}**\n\n${qtext}`
     const q = emptyQuestion({
-      kind: t.kind, text: qtext, answer: t.answer.trim(), points: Math.max(0, t.points),
+      kind: t.kind, title: t.title.trim(), text: qtext, answer: t.answer.trim(), points: Math.max(0, t.points),
       subject_id: section.subject_id, source_path: section.path,
       source_loc: images.length
         ? `Aufgabe ${t.number}${images[t.page - 1] ? `, ${basename(images[t.page - 1])}` : ''}`
@@ -490,6 +526,21 @@ export async function extractExam(client: Anthropic, model: string, section: Sec
     questions.push(q)
   }
   return { questions, aiSolved, unsolved, minutes: Math.max(0, exam.minutes), expected: section.text ? countTasks(section.text) : 0 }
+}
+
+/** Titel für vorhandene Fragen; gibt id -> Titel zurück (nur für Fragen, die die KI beantwortet hat). */
+export async function generateTitles(client: Anthropic, model: string, questions: Question[]): Promise<Map<number, string>> {
+  const list = questions.map((q) => {
+    let body = q.text
+    if (q.kind === 'mc') body += '\n' + q.options.map((o, i) => `${String.fromCharCode(65 + i)}) ${o}`).join('\n')
+    if (q.kind === 'zuordnung') body += '\n' + q.items.map((i) => `- ${i.text}`).join('\n')
+    return `<frage id="${q.id}">\n${body}\n</frage>`
+  })
+  const raw = await call(client, model, TITLE_SYSTEM, [{ type: 'text', text: list.join('\n\n') }], TITLE_SCHEMA, 16000)
+  const known = new Set(questions.map((q) => q.id))
+  return new Map(
+    parse(TitleSet, raw).titles.filter((t) => known.has(t.id) && t.title.trim()).map((t) => [t.id, t.title.trim()]),
+  )
 }
 
 export async function gradeAnswer(client: Anthropic, model: string, q: Question, userAnswer: string): Promise<Grading> {

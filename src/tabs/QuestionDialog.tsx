@@ -17,6 +17,7 @@ export function QuestionDialog({ question, subjects, onSave, onClose }: {
   const [subjectId, setSubjectId] = useState<number>(q.subject_id ?? subjects[0]?.id)
   const [difficulty, setDifficulty] = useState(q.difficulty)
   const [points, setPoints] = useState(q.points)
+  const [title, setTitle] = useState(q.title)
   const [text, setText] = useState(q.text)
   const [options, setOptions] = useState<string[]>(() => {
     const o = [...q.options]
@@ -34,7 +35,7 @@ export function QuestionDialog({ question, subjects, onSave, onClose }: {
     const t = text.trim()
     if (!t) return setError('Bitte einen Fragetext eingeben.')
     const out: Question = {
-      ...q, kind, text: t, subject_id: subjectId, difficulty, points,
+      ...q, kind, title: title.trim(), text: t, subject_id: subjectId, difficulty, points,
       explanation: explanation.trim(), approved,
     }
     if (kind === 'mc') {
@@ -102,6 +103,11 @@ export function QuestionDialog({ question, subjects, onSave, onClose }: {
           </label>
         </div>
         {q.source_path && <p className="text-[12px] text-muted">Quelle: {sourceText(q)}</p>}
+
+        <label className={field}>
+          Titel (für Listen; leer = erste Zeile der Frage)
+          <Input value={title} placeholder="z. B. SWOT-Analyse: Stärken und Chancen" onChange={(e) => setTitle(e.target.value)} />
+        </label>
 
         <label className={field}>
           Frage (Markdown möglich)

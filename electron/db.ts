@@ -24,6 +24,7 @@ CREATE TABLE IF NOT EXISTS subject_sources (
 CREATE TABLE IF NOT EXISTS questions (
     id INTEGER PRIMARY KEY,
     kind TEXT NOT NULL,
+    title TEXT NOT NULL DEFAULT '',  -- kurzer, aussagekräftiger Titel für Listen
     text TEXT NOT NULL,
     options TEXT NOT NULL DEFAULT '[]',
     correct_index INTEGER NOT NULL DEFAULT -1,
@@ -104,6 +105,9 @@ export class Database {
     this.db = new DatabaseSync(file, { timeout: 30_000 })
     this.db.exec('PRAGMA foreign_keys = ON')
     this.db.exec(SCHEMA)
+    // Seit 1.1: Kurztitel je Frage (bestehende Datenbanken bekommen die Spalte nachträglich)
+    const cols = new Set(this.all('PRAGMA table_info(questions)').map((r) => String(r.name)))
+    if (!cols.has('title')) this.db.exec("ALTER TABLE questions ADD COLUMN title TEXT NOT NULL DEFAULT ''")
   }
 
   // --- Grundlagen -----------------------------------------------------
@@ -313,7 +317,7 @@ export class Database {
 
   private toQuestion(r: Row): Question {
     return {
-      id: Number(r.id), kind: r.kind as Question['kind'], text: String(r.text),
+      id: Number(r.id), kind: r.kind as Question['kind'], title: String(r.title ?? ''), text: String(r.text),
       options: JSON.parse(String(r.options)) as string[], correct_index: Number(r.correct_index),
       items: JSON.parse(String(r.items)) as Item[], points: Number(r.points), answer: String(r.answer),
       explanation: String(r.explanation), difficulty: Number(r.difficulty),
@@ -328,12 +332,13 @@ export class Database {
     const values: SQLInputValue[] = [
       q.kind, q.text, JSON.stringify(q.options), q.correct_index, JSON.stringify(q.items), q.points, q.answer,
       q.explanation, q.difficulty, q.subject_id, q.source_path, q.source_loc, q.origin, q.approved ? 1 : 0, q.ext_key,
+      q.title,
     ]
     if (q.id == null) {
       const r = this.run(
         'INSERT OR IGNORE INTO questions (kind, text, options, correct_index, items, points, answer, explanation,' +
-          ' difficulty, subject_id, source_path, source_loc, origin, approved, ext_key, created)' +
-          ' VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+          ' difficulty, subject_id, source_path, source_loc, origin, approved, ext_key, title, created)' +
+          ' VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
         ...values, now(),
       )
       if (!r.changes) return false
@@ -341,7 +346,7 @@ export class Database {
     } else {
       this.run(
         'UPDATE questions SET kind=?, text=?, options=?, correct_index=?, items=?, points=?, answer=?, explanation=?,' +
-          ' difficulty=?, subject_id=?, source_path=?, source_loc=?, origin=?, approved=?, ext_key=? WHERE id=?',
+          ' difficulty=?, subject_id=?, source_path=?, source_loc=?, origin=?, approved=?, ext_key=?, title=? WHERE id=?',
         ...values, q.id,
       )
     }
@@ -365,9 +370,10 @@ export class Database {
    *  überschrieben, Freigabe und Ergebnisse bleiben. true, wenn sie neu ist. */
   upsertExamQuestion(q: Question): boolean {
     const r = this.run(
-      'UPDATE questions SET kind=?, text=?, options=?, correct_index=?, items=?, points=?, answer=?, explanation=?, source_loc=? WHERE ext_key=?',
+      'UPDATE questions SET kind=?, text=?, options=?, correct_index=?, items=?, points=?, answer=?, explanation=?, source_loc=?,' +
+        " title=CASE WHEN ?='' THEN title ELSE ? END WHERE ext_key=?",
       q.kind, q.text, JSON.stringify(q.options), q.correct_index, JSON.stringify(q.items), q.points, q.answer,
-      q.explanation, q.source_loc, q.ext_key,
+      q.explanation, q.source_loc, q.title, q.title, q.ext_key,
     )
     if (r.changes) return false
     return this.saveQuestion(q)
@@ -388,6 +394,10 @@ export class Database {
       }
       return fresh
     })
+  }
+
+  setTitles(titles: { id: number; title: string }[]): void {
+    this.tx(() => titles.forEach((t) => this.run('UPDATE questions SET title=? WHERE id=?', t.title, t.id)))
   }
 
   deleteQuestions(ids: number[]): void {

@@ -13,7 +13,7 @@ export function maxPoints(q: Question): number {
 
 export function emptyQuestion(patch: Partial<Question> = {}): Question {
   return {
-    id: null, kind: 'frei', text: '', options: [], correct_index: -1, items: [], points: 0, answer: '',
+    id: null, kind: 'frei', title: '', text: '', options: [], correct_index: -1, items: [], points: 0, answer: '',
     explanation: '', difficulty: 2, subject_id: null, source_path: '', source_loc: '', origin: 'manuell',
     approved: false, ext_key: null, subject: '', ...patch,
   }
@@ -39,8 +39,10 @@ export function dirname(p: string): string {
   return i > 0 ? p.slice(0, i) : '/'
 }
 
-/** Einzeilige Kurzfassung für Listen: die Überschrift (**Aufgabe …**) oder die erste Zeile. */
+/** Einzeilige Kurzfassung für Listen: der Titel der Frage, sonst die Überschrift (**Aufgabe …**)
+ *  bzw. die erste Zeile des Fragetexts. */
 export function questionTitle(q: Question): string {
+  if (q.title.trim()) return q.title.trim()
   const line = q.text.split('\n').map((l) => l.trim()).find(Boolean) ?? ''
   // Markdown-Zeichen für die einzeilige Anzeige entfernen
   return line.replace(/^#+\s*/, '').replace(/\*\*|__|`/g, '').replace(/^\*|\*$/g, '').trim()

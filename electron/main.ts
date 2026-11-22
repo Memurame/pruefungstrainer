@@ -8,7 +8,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { basename, dirname, maxPoints, stem } from '../shared/logic'
 import type { Api, Config, GenerateRequest, Grading, Progress, ScanInfo, Source, SourceMode } from '../shared/types'
-import { AIError, checkKey, extractExam, generateQuestions, gradeAnswer, makeClient } from './ai'
+import { AIError, checkKey, extractExam, generateQuestions, generateTitles, gradeAnswer, makeClient } from './ai'
 import { CACHE_DIR, CONFIG_FILE, DB_FILE, ignored, loadConfig, saveConfig } from './config'
 import { apiKey, clearKey, keyringAvailable, keySource, saveKey } from './secret'
 import { Database, UserError } from './db'
@@ -138,6 +138,21 @@ async function runGenerate(req: GenerateRequest): Promise<number> {
   return total
 }
 
+async function runTitles(ids: number[]): Promise<number> {
+  const client = makeClient(apiKey())
+  const questions = ids.map((id) => db.question(id)).filter((q) => q !== null)
+  const BATCH = 40
+  let done = 0
+  for (let i = 0; i < questions.length; i += BATCH) {
+    progress({ job: 'titles', done: i, total: questions.length, msg: '' })
+    const titles = await generateTitles(client, cfg.model, questions.slice(i, i + BATCH))
+    db.setTitles([...titles].map(([id, title]) => ({ id, title })))
+    done += titles.size
+  }
+  progress({ job: 'titles', done: questions.length, total: questions.length, msg: '' })
+  return done
+}
+
 async function runGrade(items: { questionId: number; answer: string }[]) {
   const client = makeClient(apiKey())
   const results: (Grading | null)[] = []
@@ -250,6 +265,7 @@ const handlers: Handlers = {
   },
   deleteQuestions: (ids) => db.deleteQuestions(ids),
   moveQuestions: (ids, target) => db.moveQuestions(ids, target),
+  generateTitles: (ids) => runTitles(ids),
   setApproved: (ids, approved) => db.setApproved(ids, approved),
   openSource: async (file) => {
     if (!file) return

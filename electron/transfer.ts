@@ -9,7 +9,7 @@ import { type Database, rekey, UserError } from './db'
 const FORMAT = 'pruefungstrainer-export'
 const VERSION = 1
 const QUESTION_FIELDS = [
-  'kind', 'text', 'options', 'correct_index', 'items', 'points', 'answer', 'explanation', 'difficulty',
+  'kind', 'title', 'text', 'options', 'correct_index', 'items', 'points', 'answer', 'explanation', 'difficulty',
   'source_path', 'source_loc', 'origin', 'approved', 'ext_key',
 ] as const
 

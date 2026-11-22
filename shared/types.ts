@@ -14,6 +14,7 @@ export interface Item {
 export interface Question {
   id: number | null
   kind: Kind
+  title: string // kurzer Titel für Listen; leer = erste Zeile des Fragetexts
   text: string
   options: string[]
   correct_index: number
@@ -94,7 +95,7 @@ export interface GenerateRequest {
 }
 
 export interface Progress {
-  job: 'scan' | 'generate' | 'grade'
+  job: 'scan' | 'generate' | 'grade' | 'titles'
   done: number
   total: number
   msg: string
@@ -149,6 +150,8 @@ export interface Api {
   saveQuestion(q: Question): Promise<Question>
   deleteQuestions(ids: number[]): Promise<void>
   moveQuestions(ids: number[], targetSubjectId: number): Promise<void>
+  /** Lässt die KI Titel für die Fragen erstellen; gibt die Zahl der neuen Titel zurück. */
+  generateTitles(ids: number[]): Promise<number>
   setApproved(ids: number[], approved: boolean): Promise<void>
   openSource(path: string): Promise<void>
 
