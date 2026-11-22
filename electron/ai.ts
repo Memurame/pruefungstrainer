@@ -1,6 +1,9 @@
 // Anbindung an die Claude API: Fragen erzeugen, Altklausuren übernehmen und Freitextantworten bewerten.
 
 import Anthropic from '@anthropic-ai/sdk'
+import { nativeImage } from 'electron'
+import fs from 'node:fs'
+import path from 'node:path'
 import { z } from 'zod'
 import { basename, emptyQuestion, maxPoints } from '../shared/logic'
 import type { Grading, Kind, Question } from '../shared/types'
@@ -162,6 +165,15 @@ im Text alles, was rot gedruckt ist, in ⟦…⟧ – das ist die offizielle Lö
 Aufgabenstellung. Ist nichts markiert, erkenne die Lösung am Layout (andere Farbe, Handschrift, \
 Abschnitt „Lösungen“ am Ende o. Ä.) bzw. im reinen Text an Hinweisen wie „Lösung:“.
 
+Screenshots (z. B. aus einer Lernplattform) liest du genau ab und überträgst sie ebenso wörtlich. \
+Die Bilder sind in Lesereihenfolge nummeriert; Frage und Lösung können auf verschiedenen Bildern \
+stehen, und dieselbe Aufgabe kann auf mehreren Bildern vorkommen – dann nur einmal übernehmen. Als \
+Lösung gilt, was als richtig gekennzeichnet ist: grüne Markierung oder Häkchen bei einer Option, \
+„Richtige Antwort“, „Die richtige Antwort ist: …“, Feedback- oder Lösungstext. Eine als falsch \
+markierte Auswahl (rot, Kreuz, „Falsch“) ist nicht die Lösung, ebenso wenig eine bloss angekreuzte \
+Auswahl ohne Bewertung. Bedienelemente der Plattform (Navigation, Knöpfe, Zeitanzeige) weglassen. \
+Hat eine Aufgabe keine Nummer, nummeriere fortlaufend in Lesereihenfolge.
+
 Übertrage ausnahmslos alle Aufgaben, auch wenn es sehr viele sind – keine auslassen oder zusammenfassen.
 
 Aufteilung:
@@ -316,6 +328,38 @@ function pdfBlock(data: Uint8Array): Anthropic.Beta.BetaContentBlockParam {
   return { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: Buffer.from(data).toString('base64') } }
 }
 
+const MEDIA_TYPES = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.gif': 'image/gif' } as const
+const MAX_IMAGE_BYTES = 3_500_000 // die API nimmt höchstens 5 MB base64 je Bild an
+const MAX_IMAGE_SIDE = 7_900 // und höchstens 8000 Pixel Kantenlänge
+
+/** Screenshot als Bildblock; zu große Bilder werden verkleinert und als JPEG geschickt. */
+export function imageBlock(file: string): Anthropic.Beta.BetaContentBlockParam {
+  let data: Buffer = fs.readFileSync(file)
+  let mediaType: (typeof MEDIA_TYPES)[keyof typeof MEDIA_TYPES] =
+    MEDIA_TYPES[path.extname(file).toLowerCase() as keyof typeof MEDIA_TYPES] ?? 'image/png'
+  const img = nativeImage.createFromBuffer(data)
+  if (img.isEmpty() && mediaType !== 'image/gif') throw new AIError(`${basename(file)} ist kein lesbares Bild.`)
+  const { width, height } = img.getSize()
+  if (!img.isEmpty() && (data.length > MAX_IMAGE_BYTES || Math.max(width, height) > MAX_IMAGE_SIDE)) {
+    let scale = Math.min(1, MAX_IMAGE_SIDE / Math.max(width, height))
+    for (;;) {
+      const out = img.resize({ width: Math.round(width * scale), quality: 'best' }).toJPEG(90)
+      if (out.length <= MAX_IMAGE_BYTES || scale < 0.2) {
+        data = out
+        break
+      }
+      scale *= 0.75
+    }
+    mediaType = 'image/jpeg'
+  }
+  return { type: 'image', source: { type: 'base64', media_type: mediaType, data: data.toString('base64') } }
+}
+
+/** Bilder mit Nummer und Dateiname davor, damit die KI auf sie verweisen kann. */
+function imageBlocks(files: string[]): Anthropic.Beta.BetaContentBlockParam[] {
+  return files.flatMap((f, i) => [{ type: 'text' as const, text: `Bild ${i + 1}: ${basename(f)}` }, imageBlock(f)])
+}
+
 export async function generateQuestions(
   client: Anthropic, model: string, section: Section, count: number, kinds: Kind[],
 ): Promise<Question[]> {
@@ -335,6 +379,8 @@ export async function generateQuestions(
     instruction += ` Das PDF ist ein Auszug: Seite 1 des Auszugs ist Seite ${offset + 1} des Originals. ` +
       `Gib in "location" die Originalseitenzahl an (z. B. "S. ${offset + 2}").`
     content = [pdfBlock(data), { type: 'text', text: instruction }]
+  } else if (section.kind === 'bild') {
+    content = [imageBlock(section.path), { type: 'text', text: `${instruction} Das Material ist ein Bild.` }]
   } else {
     content = [{ type: 'text', text: `<material>\n${section.text}\n</material>\n\n${instruction}` }]
   }
@@ -371,7 +417,15 @@ export const AI_SOLUTION_NOTE = 'Die Altklausur enthält zu dieser Aufgabe keine
 /** Übernimmt die Aufgaben einer Altklausur wörtlich. */
 export async function extractExam(client: Anthropic, model: string, section: Section): Promise<ExtractedExam> {
   let content: Anthropic.Beta.BetaContentBlockParam[]
-  if (section.text) {
+  const images = section.imageFiles ?? []
+  if (images.length) {
+    // Altklausur als Screenshots
+    content = [...imageBlocks(images), {
+      type: 'text',
+      text: `Übertrage alle Aufgaben aus diesen ${images.length} Screenshots einer Altklausur ` +
+        `(Ordner „${basename(section.path)}“). Gib in "page" die Nummer des Bildes an, auf dem die Aufgabe beginnt.`,
+    }]
+  } else if (section.text) {
     // Altklausur als Text- oder Markdown-Datei
     content = [{
       type: 'text',
@@ -401,8 +455,12 @@ export async function extractExam(client: Anthropic, model: string, section: Sec
     const q = emptyQuestion({
       kind: t.kind, text: qtext, answer: t.answer.trim(), points: Math.max(0, t.points),
       subject_id: section.subject_id, source_path: section.path,
-      source_loc: t.page > 0 ? `Aufgabe ${t.number}, S. ${t.page}` : `Aufgabe ${t.number}`,
-      origin: 'klausur', approved: false, ext_key: examKey(section.subject_id, section.path, t.number),
+      source_loc: images.length
+        ? `Aufgabe ${t.number}${images[t.page - 1] ? `, ${basename(images[t.page - 1])}` : ''}`
+        : t.page > 0 ? `Aufgabe ${t.number}, S. ${t.page}` : `Aufgabe ${t.number}`,
+      // Bei Screenshots nummeriert die KI je Bildgruppe; der Abschnitt hält die Nummern eindeutig
+      origin: 'klausur', approved: false,
+      ext_key: examKey(section.subject_id, section.path, images.length ? `${section.key.split('#').pop()}:${t.number}` : t.number),
     })
     let solved: boolean
     if (t.kind === 'mc') {

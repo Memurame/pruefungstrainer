@@ -1,4 +1,4 @@
-// Liest die Quellen eines Fachs: teilt Markdown, Text und PDFs in Abschnitte auf und findet manuell
+// Liest die Quellen eines Fachs: teilt Markdown, Text, PDFs und Screenshots in Abschnitte auf und findet manuell
 // notierte Fragen. Die Dateien werden nie verändert.
 
 import crypto from 'node:crypto'
@@ -14,7 +14,9 @@ const MD_MIN_CHARS = 300 // kürzere Notizen lohnen keine Fragen
 const PDF_PAGES = 15 // Seiten pro PDF-Abschnitt
 const EXAM_PAGES = 100 // Altklausuren am Stück; mehr Seiten nimmt die API pro PDF nicht an
 const TEXT_SUFFIXES = new Set(['.md', '.txt']) // Notizen und reiner Text
-const SUFFIXES = new Set([...TEXT_SUFFIXES, '.pdf'])
+export const IMAGE_SUFFIXES = new Set(['.png', '.jpg', '.jpeg', '.webp', '.gif']) // Screenshots
+const SUFFIXES = new Set([...TEXT_SUFFIXES, ...IMAGE_SUFFIXES, '.pdf'])
+const EXAM_IMAGES = 15 // Screenshots pro Anfrage an die KI
 
 const HEADING = /^(#{1,3})\s+(.+?)\s*#*$/
 const FENCE = /^\s*(```|~~~)/
@@ -25,6 +27,7 @@ const CALLOUT_START = /^>\s*\[!frage\][-+]?\s*(.*)$/i
 export interface Section extends SectionInfo {
   text: string // nur Markdown
   pages: [number, number] // nur PDF, 0-basiert, Ende exklusiv
+  imageFiles?: string[] // nur Screenshots, in Lesereihenfolge
 }
 
 export interface ScanResult {
@@ -74,6 +77,9 @@ function sourceFiles(source: Source, ignored: Set<string>): string[] {
 export async function scan(sources: Source[], ignored: Set<string>): Promise<ScanResult> {
   const result: ScanResult = { files: {}, sections: [], noteQuestions: [], errors: [] }
   const seen = new Set<string>() // Datei doppelt im selben Fach (Ordner + Einzeldatei)
+  // Screenshots einer Altklausur: je Fach und Ordner gesammelt, da Frage und Lösung oft auf
+  // verschiedenen Bildern stehen
+  const examImages = new Map<string, { subjectId: number; dir: string; files: string[] }>()
   // Altklausuren zuerst, damit eine Klausur im Lernstoff-Ordner als Klausur gilt
   const ordered = [...sources].sort((a, b) => Number(a.mode !== 'klausur') - Number(b.mode !== 'klausur'))
   for (const src of ordered) {
@@ -85,8 +91,19 @@ export async function scan(sources: Source[], ignored: Set<string>): Promise<Sca
       if (seen.has(id)) continue
       seen.add(id)
       try {
-        const isText = TEXT_SUFFIXES.has(path.extname(file).toLowerCase())
-        if (isText && src.mode === 'klausur') {
+        const ext = path.extname(file).toLowerCase()
+        const isText = TEXT_SUFFIXES.has(ext)
+        if (IMAGE_SUFFIXES.has(ext) && src.mode === 'klausur') {
+          const dir = path.dirname(file)
+          const group = examImages.get(`${src.subject_id}\0${dir}`) ?? { subjectId: src.subject_id, dir, files: [] }
+          group.files.push(file)
+          examImages.set(`${src.subject_id}\0${dir}`, group)
+        } else if (IMAGE_SUFFIXES.has(ext)) {
+          result.sections.push({
+            key: `${file}#B1`, path: file, kind: 'bild', label: 'Bild', subject_id: src.subject_id,
+            hash: sha(fs.readFileSync(file)), text: '', pages: [0, 0], imageFiles: [file],
+          })
+        } else if (isText && src.mode === 'klausur') {
           result.sections.push(...textExam(file, readText(file), src.subject_id))
         } else if (isText) {
           const text = readText(file)
@@ -103,7 +120,28 @@ export async function scan(sources: Source[], ignored: Set<string>): Promise<Sca
       }
     }
   }
+  for (const group of examImages.values()) {
+    try {
+      result.sections.push(...imageExam(group.dir, group.files, group.subjectId))
+    } catch (e) {
+      result.errors.push(`${group.dir}: ${e instanceof Error ? e.message : String(e)}`)
+    }
+  }
   return result
+}
+
+/** Screenshots einer Altklausur in Lesereihenfolge (Dateiname, Zahlen natürlich sortiert), in
+ *  Gruppen zu höchstens EXAM_IMAGES Bildern. Der Abschnitt gehört zum Ordner. */
+function imageExam(dir: string, files: string[], subjectId: number): Section[] {
+  const sorted = [...files].sort((a, b) => path.basename(a).localeCompare(path.basename(b), 'de', { numeric: true }))
+  const groups: string[][] = []
+  for (let i = 0; i < sorted.length; i += EXAM_IMAGES) groups.push(sorted.slice(i, i + EXAM_IMAGES))
+  return groups.map((imgs, i) => ({
+    key: `${dir}#B${i + 1}`, path: dir, kind: 'klausur' as const,
+    label: groups.length > 1 ? `Screenshots ${i * EXAM_IMAGES + 1}–${i * EXAM_IMAGES + imgs.length}` : 'Screenshots',
+    subject_id: subjectId, hash: sha(imgs.map((f) => `${path.basename(f)}:${sha(fs.readFileSync(f))}`).join('\n')),
+    text: '', pages: [0, 0] as [number, number], imageFiles: imgs,
+  }))
 }
 
 // --- Markdown und Text ------------------------------------------------

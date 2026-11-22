@@ -55,11 +55,12 @@ export interface Source {
 /** Abschnitt einer Quelle, für den Fragen erzeugt werden (ohne Inhalt, der bleibt im Hauptprozess). */
 export interface SectionInfo {
   key: string // eindeutig: absoluter Pfad + Abschnitt
-  path: string
-  kind: 'md' | 'pdf' | 'klausur'
+  path: string // Datei; bei Screenshot-Altklausuren der Ordner
+  kind: 'md' | 'pdf' | 'bild' | 'klausur'
   label: string
   subject_id: number
   hash: string
+  imageCount?: number // Screenshot-Altklausur: Zahl der Bilder
 }
 
 export interface ScanInfo {

@@ -49,18 +49,22 @@ Ohne Key funktioniert alles außer dem Generieren von Fragen und der KI-Bewertun
 
 ## Ablauf
 
-1. **Fächer:** Fächer anlegen und ihnen beliebige Dateien (.md, .txt, .pdf) oder Ordner hinzufügen.
-   Bei Ordnern kommen neue Dateien automatisch dazu. Notizen werden an Überschriften, reine Texte
-   in Teile zu höchstens 12 000 Zeichen (Kodierung UTF-8, UTF-16 oder Windows-1252), PDFs in
-   Blöcke zu 15 Seiten aufgeteilt. „Verarbeiten“ bearbeitet nur neue oder geänderte Abschnitte.
-   Fächer lassen sich umbenennen und zusammenführen.
-   **Altklausuren** (PDF, .txt oder .md): Über „Altklausur hinzufügen …“ (oder „Altklausur ein/aus“
-   für vorhandene Dateien und Ordner) werden alte Prüfungen wörtlich übernommen statt neue Fragen zu
-   erfinden: jede (Teil-)Aufgabe mit ihrer Originalpunktzahl, die offizielle Lösung als
-   Musterlösung. In PDFs gilt rot gedruckter Text als Lösung. Fehlt die Lösung zu einer Aufgabe
-   (oder hat die Klausur gar keine), erstellt die KI eine – solche Aufgaben sind in der Erläuterung
-   als KI-Lösung markiert und sollten vor dem Freigeben geprüft werden. Ankreuzen, Unterstreichen und Zuordnen werden zu „Zuordnung“-Fragen, die Zeile
-   für Zeile automatisch bewertet werden. Erneutes Verarbeiten („Auswahl (neu) verarbeiten“)
+1. **Fächer:** Fächer anlegen und ihnen beliebige Dateien (.md, .txt, .pdf, Bilder) oder Ordner
+   hinzufügen. Bei Ordnern kommen neue Dateien automatisch dazu. Notizen werden an Überschriften,
+   reine Texte in Teile zu höchstens 12 000 Zeichen (Kodierung UTF-8, UTF-16 oder Windows-1252),
+   PDFs in Blöcke zu 15 Seiten aufgeteilt; aus einem Bild entstehen Fragen zu seinem Inhalt.
+   „Verarbeiten“ bearbeitet nur neue oder geänderte Abschnitte. Fächer und Quellen lassen sich
+   umbenennen, verschieben und zusammenführen.
+   **Altklausuren** (PDF, .txt, .md oder Screenshots): Über „Altklausur hinzufügen …“ (oder
+   „Altklausur ein/aus“ für vorhandene Dateien und Ordner) werden alte Prüfungen wörtlich
+   übernommen statt neue Fragen zu erfinden: jede (Teil-)Aufgabe mit ihrer Originalpunktzahl, die
+   offizielle Lösung als Musterlösung. In PDFs gilt rot gedruckter Text als Lösung, auf Screenshots
+   das als richtig Markierte (grün, Häkchen, „Die richtige Antwort ist …“). Alle Screenshots eines
+   Ordners gelten als eine Prüfung, in der Reihenfolge der Dateinamen – Frage und Lösung dürfen auf
+   verschiedenen Bildern stehen. Fehlt die Lösung zu einer Aufgabe (oder hat die Klausur gar keine,
+   auch keine Antwortmöglichkeiten), erstellt die KI sie – solche Aufgaben sind in der Erläuterung
+   als KI-Lösung markiert und sollten vor dem Freigeben geprüft werden. Ankreuzen, Unterstreichen
+   und Zuordnen werden zu „Zuordnung“-Fragen, die Zeile für Zeile automatisch bewertet werden. Erneutes Verarbeiten („Auswahl (neu) verarbeiten“)
    aktualisiert übernommene Aufgaben; Freigaben und Ergebnisse bleiben erhalten.
 2. **Fragen:** Generierte Fragen prüfen, bearbeiten, freigeben; eigene Fragen anlegen.
    Markierte Fragen (Strg/Umschalt für mehrere) mit „Zu Übungssatz …“ in einen Übungssatz übernehmen.

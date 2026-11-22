@@ -7,13 +7,13 @@ import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { basename, dirname, maxPoints, stem } from '../shared/logic'
-import type { Api, Config, GenerateRequest, Grading, Progress, ScanInfo, SourceMode } from '../shared/types'
+import type { Api, Config, GenerateRequest, Grading, Progress, ScanInfo, Source, SourceMode } from '../shared/types'
 import { AIError, checkKey, extractExam, generateQuestions, gradeAnswer, makeClient } from './ai'
 import { CACHE_DIR, CONFIG_FILE, DB_FILE, ignored, loadConfig, saveConfig } from './config'
 import { apiKey, clearKey, keyringAvailable, keySource, saveKey } from './secret'
 import { Database, UserError } from './db'
 import { readImport, summary, writeExport } from './transfer'
-import { scan, type ScanResult } from './vault'
+import { IMAGE_SUFFIXES, scan, type ScanResult } from './vault'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 
@@ -47,6 +47,15 @@ function rememberDir(dir: string): void {
 
 // --- Einlesen und Generieren ------------------------------------------
 
+/** Dateien einer Quelle für Entfernen/Verschieben – dazu die Ordner ihrer Screenshot-Altklausuren,
+ *  denn deren Fragen hängen am Ordner. */
+function sourceFilesWithGroups(src: Source): string[] {
+  const files = lastScan?.files[src.id]?.length ? lastScan.files[src.id] : src.kind === 'file' ? [src.path] : []
+  if (src.mode !== 'klausur') return files
+  const dirs = files.filter((f) => IMAGE_SUFFIXES.has(path.extname(f).toLowerCase())).map((f) => path.dirname(f))
+  return [...new Set([...files, ...dirs])]
+}
+
 async function runScan(): Promise<ScanInfo> {
   progress({ job: 'scan', done: 0, total: 0, msg: '' })
   const result = await scan(db.sources(), ignored(cfg))
@@ -54,7 +63,7 @@ async function runScan(): Promise<ScanInfo> {
   const newNoteQuestions = db.upsertNoteQuestions(result.noteQuestions)
   return {
     files: result.files,
-    sections: result.sections.map(({ text: _t, pages: _p, ...info }) => info),
+    sections: result.sections.map(({ text: _t, pages: _p, imageFiles, ...info }) => (imageFiles && info.kind === 'klausur' ? { ...info, imageCount: imageFiles.length } : info)),
     errors: result.errors,
     newNoteQuestions,
   }
@@ -199,7 +208,9 @@ const handlers: Handlers = {
       title: exams ? 'Altklausuren hinzufügen' : 'Dateien hinzufügen',
       defaultPath: startDir(),
       properties: ['openFile', 'multiSelections'],
-      filters: exams ? [{ name: 'Altklausuren (PDF, Text)', extensions: ['pdf', 'txt', 'md'] }] : [{ name: 'Notizen, Texte und PDFs', extensions: ['md', 'txt', 'pdf'] }],
+      filters: exams
+        ? [{ name: 'Altklausuren (PDF, Text, Screenshots)', extensions: ['pdf', 'txt', 'md', 'png', 'jpg', 'jpeg', 'webp', 'gif'] }]
+        : [{ name: 'Notizen, Texte, PDFs und Bilder', extensions: ['md', 'txt', 'pdf', 'png', 'jpg', 'jpeg', 'webp', 'gif'] }],
     })
     if (r.canceled || !r.filePaths.length) return false
     for (const f of r.filePaths) db.addSource(subjectId, fs.realpathSync(f), 'file', exams ? 'klausur' : 'lernstoff')
@@ -212,7 +223,7 @@ const handlers: Handlers = {
     for (const id of ids) {
       const src = all.get(id)
       if (!src) continue
-      const files = lastScan?.files[id]?.length ? lastScan.files[id] : src.kind === 'file' ? [src.path] : []
+      const files = sourceFilesWithGroups(src)
       db.removeSource(src, files, deleteQuestions)
     }
   },
@@ -221,7 +232,7 @@ const handlers: Handlers = {
     for (const id of ids) {
       const src = all.get(id)
       if (!src) continue
-      const files = lastScan?.files[id]?.length ? lastScan.files[id] : src.kind === 'file' ? [src.path] : []
+      const files = sourceFilesWithGroups(src)
       db.moveSource(src, files, target)
     }
   },

@@ -2,11 +2,14 @@
 // Altklausuren übernehmen.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { basename } from '../../shared/logic'
+import { basename, dirname } from '../../shared/logic'
 import type { Kind, ScanInfo, SectionInfo, Source, Subject } from '../../shared/types'
 import { useDialogs } from '../components/dialogs'
 import { Badge, Button, Check, Empty, NumberInput, Panel, ProgressBar } from '../components/ui'
 import { api, useApp } from '../state'
+
+const IMAGE = /\.(png|jpe?g|webp|gif)$/i
+const isImage = (f: string) => IMAGE.test(f)
 
 type Status = 'neu' | 'erledigt' | 'geändert'
 
@@ -262,17 +265,40 @@ export function SubjectsTab() {
       pending += list.filter((s) => status(s, done) !== 'erledigt').length
     }
 
+    // Screenshot-Altklausuren hängen am Ordner der Bilder; jede Gruppe erscheint einmal
+    const groupDirs = new Set([...bySection.values()].flat().filter((s) => s.imageCount).map((s) => s.path))
+    const shownGroups = new Set<string>()
+    const groupNode = (dir: string, depth: number, base: string): Node[] => {
+      if (!groupDirs.has(dir) || shownGroups.has(dir)) return []
+      shownGroups.add(dir)
+      const secs = sectionNodes(dir, depth + 1)
+      const images = (bySection.get(dir) ?? []).reduce((n, s) => n + (s.imageCount ?? 0), 0)
+      const rel = dir.startsWith(base + '/') ? dir.slice(base.length + 1) + ' – ' : ''
+      return [{
+        id: `group:${dir}`, label: `📷 ${rel}Screenshots (${images} Bilder)`, title: dir, depth, children: secs,
+        status: aggregate(secs.map((s) => s.status as Status)), sectionKeys: secs.flatMap((s) => s.sectionKeys),
+      }]
+    }
+
     const nodes: Node[] = sources.map((src) => {
       const found = !scanInfo?.errors.includes(`Nicht gefunden: ${src.path}`)
       let children: Node[]
       if (src.kind === 'dir') {
-        children = (scanInfo?.files[src.id] ?? []).map((f) => {
-          const secs = sectionNodes(f, 2)
-          return {
-            id: `file:${f}`, label: f.startsWith(src.path + '/') ? f.slice(src.path.length + 1) : f, title: f,
-            status: aggregate(secs.map((s) => s.status as Status)), depth: 1, children: secs, sectionKeys: secs.flatMap((s) => s.sectionKeys),
-          }
-        })
+        const files = scanInfo?.files[src.id] ?? []
+        // Screenshots einer Altklausur erscheinen gesammelt als Gruppe statt einzeln
+        const grouped = (f: string) => src.mode === 'klausur' && isImage(f)
+        children = [
+          ...files.filter((f) => !grouped(f)).map((f) => {
+            const secs = sectionNodes(f, 2)
+            return {
+              id: `file:${f}`, label: f.startsWith(src.path + '/') ? f.slice(src.path.length + 1) : f, title: f,
+              status: aggregate(secs.map((s) => s.status as Status)), depth: 1, children: secs, sectionKeys: secs.flatMap((s) => s.sectionKeys),
+            }
+          }),
+          ...[...new Set(files.filter(grouped).map(dirname))].flatMap((d) => groupNode(d, 1, src.path)),
+        ]
+      } else if (src.mode === 'klausur' && isImage(src.path)) {
+        children = groupNode(dirname(src.path), 1, '')
       } else {
         children = sectionNodes(src.path, 1)
       }
@@ -423,7 +449,7 @@ export function SubjectsTab() {
                   >
                     <span className={`text-[10px] transition-transform ${expanded.has(n.id) ? 'rotate-90' : ''}`}>▶</span>
                   </button>
-                  <span className="shrink-0">{n.source ? (n.source.kind === 'dir' ? '📁' : '📄') : n.id.startsWith('file:') ? '📄' : ''}</span>
+                  <span className="shrink-0">{n.source ? (n.source.kind === 'dir' ? '📁' : isImage(n.source.path) ? '🖼️' : '📄') : n.id.startsWith('file:') ? (isImage(n.id) ? '🖼️' : '📄') : ''}</span>
                   <span className="min-w-0 flex-1 truncate">{n.label}</span>
                   {n.source?.mode === 'klausur' && <Badge tone="accent">Altklausur</Badge>}
                   <StatusBadge text={n.status} />
