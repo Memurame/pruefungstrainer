@@ -216,6 +216,15 @@ const handlers: Handlers = {
       db.removeSource(src, files, deleteQuestions)
     }
   },
+  moveSources: (ids, target) => {
+    const all = new Map(db.sources().map((s) => [s.id, s]))
+    for (const id of ids) {
+      const src = all.get(id)
+      if (!src) continue
+      const files = lastScan?.files[id]?.length ? lastScan.files[id] : src.kind === 'file' ? [src.path] : []
+      db.moveSource(src, files, target)
+    }
+  },
   scan: () => runScan(),
   generatedHashes: (subjectId) => db.generatedHashes(subjectId),
   generate: (req) => runGenerate(req),
@@ -229,6 +238,7 @@ const handlers: Handlers = {
     return db.question(q.id!)!
   },
   deleteQuestions: (ids) => db.deleteQuestions(ids),
+  moveQuestions: (ids, target) => db.moveQuestions(ids, target),
   setApproved: (ids, approved) => db.setApproved(ids, approved),
   openSource: async (file) => {
     if (!file) return

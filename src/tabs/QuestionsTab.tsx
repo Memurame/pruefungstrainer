@@ -100,6 +100,15 @@ export function QuestionsTab() {
     }
   }
 
+  const changeSubject = async () => {
+    if (!sel.length) return
+    const i = await dialogs.choose('Fach ändern', `${sel.length} Frage(n) verschieben nach:`, subjects.map((s) => s.name))
+    if (i == null) return
+    await app.guard(() => api.moveQuestions(sel.map((q) => q.id!), subjects[i].id))
+    app.bump()
+    app.notify(`${sel.length} Frage(n) nach „${subjects[i].name}“ verschoben.`)
+  }
+
   const remove = async () => {
     if (!sel.length) return
     let msg = `${sel.length} Frage(n) löschen?`
@@ -180,6 +189,7 @@ export function QuestionsTab() {
         <Button onClick={() => approve(sel.map((q) => q.id!), false)} disabled={!sel.length}>Freigabe entziehen</Button>
         <Button onClick={approveAll} disabled={!shown.length}>Alle angezeigten freigeben</Button>
         <Button onClick={addToSet} disabled={!sel.length}>Zu Übungssatz …</Button>
+        <Button onClick={changeSubject} disabled={!sel.length}>Fach ändern …</Button>
         <Button onClick={() => sel[0] && api.openSource(sel[0].source_path)} disabled={!sel[0]?.source_path}>Quelle öffnen</Button>
         <Button variant="danger" className="ml-auto" onClick={remove} disabled={!sel.length}>Löschen</Button>
       </div>

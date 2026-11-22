@@ -6,8 +6,8 @@ import type { Api, Progress } from '../shared/types'
 const METHODS: (keyof Omit<Api, 'onProgress'>)[] = [
   'info', 'getConfig', 'saveConfig', 'setApiKey', 'clearApiKey',
   'subjects', 'addSubject', 'renameSubject', 'deleteSubject', 'mergeSubjects', 'questionCounts',
-  'sources', 'pickSources', 'setSourceMode', 'removeSources', 'scan', 'generatedHashes', 'generate', 'cancelGenerate',
-  'questions', 'saveQuestion', 'deleteQuestions', 'setApproved', 'openSource',
+  'sources', 'pickSources', 'setSourceMode', 'removeSources', 'moveSources', 'scan', 'generatedHashes', 'generate', 'cancelGenerate',
+  'questions', 'saveQuestion', 'deleteQuestions', 'moveQuestions', 'setApproved', 'openSource',
   'practiceSets', 'setSubjects', 'addPracticeSet', 'renamePracticeSet', 'setPracticeMinutes', 'deletePracticeSet',
   'setQuestionIds', 'addToSet', 'reorderSet',
   'successRates', 'subjectStats', 'recordAttempt', 'updateAttempt', 'grade',

@@ -233,6 +233,49 @@ export class Database {
     })
   }
 
+  /** Hängt Fragen an ein anderes Fach. Fragen aus Notizen und Altklausuren tragen das Fach in ihrem
+   *  ext_key; gibt es dort dieselbe Frage schon, fällt die verschobene als Duplikat weg. */
+  private moveQuestionRows(ids: number[], targetId: number): void {
+    for (const id of ids) {
+      const r = this.get('SELECT ext_key FROM questions WHERE id=?', id)
+      if (!r) continue
+      if (r.ext_key != null) {
+        const key = rekey(String(r.ext_key), targetId)
+        const other = this.get('SELECT id FROM questions WHERE ext_key=? AND id<>?', key, id)
+        if (other) {
+          this.run('DELETE FROM questions WHERE id=?', id)
+          continue
+        }
+        this.run('UPDATE questions SET ext_key=? WHERE id=?', key, id)
+      }
+      this.run('UPDATE questions SET subject_id=? WHERE id=?', targetId, id)
+    }
+  }
+
+  moveQuestions(ids: number[], targetId: number): void {
+    this.tx(() => this.moveQuestionRows(ids, targetId))
+  }
+
+  /** Verschiebt eine Quelle samt den Fragen aus ihren Dateien und dem Verarbeitungsstand. */
+  moveSource(source: Source, files: string[], targetId: number): void {
+    if (source.subject_id === targetId) return
+    this.tx(() => {
+      const exists = this.get('SELECT 1 AS x FROM subject_sources WHERE subject_id=? AND path=?', targetId, source.path)
+      if (exists) this.run('DELETE FROM subject_sources WHERE id=?', source.id)
+      else this.run('UPDATE subject_sources SET subject_id=? WHERE id=?', targetId, source.id)
+      for (const f of files) {
+        const ids = this.all('SELECT id FROM questions WHERE subject_id=? AND source_path=?', source.subject_id, f).map((r) => Number(r.id))
+        this.moveQuestionRows(ids, targetId)
+        const prefix: SQLInputValue[] = [[...f].length + 1, f + '#']
+        this.run(
+          'INSERT OR REPLACE INTO generated SELECT ?, section_key, hash, ts FROM generated WHERE subject_id=? AND substr(section_key, 1, ?) = ?',
+          targetId, source.subject_id, ...prefix,
+        )
+        this.run('DELETE FROM generated WHERE subject_id=? AND substr(section_key, 1, ?) = ?', source.subject_id, ...prefix)
+      }
+    })
+  }
+
   sources(subjectId: number | null = null): Source[] {
     const rows = subjectId == null
       ? this.all('SELECT * FROM subject_sources ORDER BY path')

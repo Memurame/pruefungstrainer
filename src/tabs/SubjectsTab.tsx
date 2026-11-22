@@ -217,6 +217,29 @@ export function SubjectsTab() {
     void scan()
   }
 
+  const moveSources = async () => {
+    const chosen = chosenSources()
+    const others = subjects.filter((s) => s.id !== current)
+    if (!chosen.length) {
+      await dialogs.alert('Verschieben', 'Wähle oben eine Datei oder einen Ordner (oberste Ebene) aus.')
+      return
+    }
+    if (!others.length) {
+      await dialogs.alert('Verschieben', 'Lege zuerst das Fach an, in das die Quelle soll.')
+      return
+    }
+    const i = await dialogs.choose(
+      'Verschieben', `${chosen.length} Quelle(n) mit ihren Fragen verschieben nach:`, others.map((s) => s.name),
+    )
+    if (i == null) return
+    await app.guard(() => api.moveSources(chosen.map((s) => s.id), others[i].id))
+    addLog(`${chosen.length} Quelle(n) nach „${others[i].name}“ verschoben.`)
+    setSelected(new Set())
+    setCurrent(others[i].id)
+    changed()
+    void scan()
+  }
+
   // --- Baum -----------------------------------------------------------
 
   const tree = useMemo(() => {
@@ -413,6 +436,7 @@ export function SubjectsTab() {
             <Button onClick={() => pick('folder')} disabled={busy !== null}>Ordner hinzufügen …</Button>
             <Button onClick={() => pick('exams')} disabled={busy !== null}>Altklausur hinzufügen …</Button>
             <Button onClick={toggleExam} disabled={busy !== null}>Altklausur ein/aus</Button>
+            <Button onClick={moveSources} disabled={busy !== null}>Verschieben …</Button>
             <Button variant="danger" onClick={removeSources} disabled={busy !== null}>Entfernen</Button>
             <span className="ml-auto text-[12px] text-muted">
               {sources.length ? `${sources.length} Quellen, ${tree.total} Abschnitte, davon ${tree.pending} ohne aktuelle Fragen` : ''}

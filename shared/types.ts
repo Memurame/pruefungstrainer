@@ -138,6 +138,7 @@ export interface Api {
   pickSources(subjectId: number, what: 'files' | 'folder' | 'exams'): Promise<boolean>
   setSourceMode(sourceId: number, mode: SourceMode): Promise<void>
   removeSources(sourceIds: number[], deleteQuestions: boolean): Promise<void>
+  moveSources(sourceIds: number[], targetSubjectId: number): Promise<void>
   scan(): Promise<ScanInfo>
   generatedHashes(subjectId: number): Promise<Record<string, string>>
   generate(req: GenerateRequest): Promise<number>
@@ -146,6 +147,7 @@ export interface Api {
   questions(): Promise<Question[]>
   saveQuestion(q: Question): Promise<Question>
   deleteQuestions(ids: number[]): Promise<void>
+  moveQuestions(ids: number[], targetSubjectId: number): Promise<void>
   setApproved(ids: number[], approved: boolean): Promise<void>
   openSource(path: string): Promise<void>
 
