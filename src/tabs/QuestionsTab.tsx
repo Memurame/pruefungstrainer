@@ -105,13 +105,15 @@ export function QuestionsTab() {
 
   /** Markierte Fragen bekommen (neue) Titel; ohne Auswahl alle angezeigten Fragen ohne Titel. */
   const makeTitles = async () => {
-    const targets = sel.length ? sel : shown.filter((q) => !q.title.trim())
-    if (!targets.length) {
-      await dialogs.alert('Titel erzeugen', 'Alle angezeigten Fragen haben schon einen Titel. Markiere Fragen, um ihre Titel neu zu erzeugen.')
-      return
-    }
-    const what = sel.length ? `${targets.length} markierte Frage(n)` : `${targets.length} angezeigte Frage(n) ohne Titel`
-    if (!(await dialogs.confirm('Titel erzeugen', `Die KI erstellt Titel für ${what}.`, 'Titel erzeugen'))) return
+    const untitled = shown.filter((q) => !q.title.trim())
+    const scopes = [
+      ...(untitled.length ? [{ label: `Alle angezeigten ohne Titel (${untitled.length})`, list: untitled }] : []),
+      { label: `Alle angezeigten, auch mit Titel (${shown.length})`, list: shown },
+      ...(sel.length ? [{ label: `Nur die markierten (${sel.length})`, list: sel }] : []),
+    ]
+    const i = await dialogs.choose('Titel erzeugen', 'Für welche Fragen soll die KI Titel erstellen?', scopes.map((s) => s.label))
+    if (i == null) return
+    const targets = scopes[i].list
     setTitling({ done: 0, total: targets.length })
     const n = await app.guard(() => api.generateTitles(targets.map((q) => q.id!)), 'Titel erzeugen')
     setTitling(null)
@@ -158,7 +160,19 @@ export function QuestionsTab() {
 
       <div className="flex min-h-0 flex-1 gap-3">
         <Panel className="min-w-0 flex-[3]">
-          <div className="min-h-0 flex-1 overflow-auto select-none">
+          <div
+            className="min-h-0 flex-1 overflow-auto select-none focus:outline-none"
+            tabIndex={0}
+            onKeyDown={(e) => {
+              // Strg+A: alle angezeigten Fragen markieren, Esc: Auswahl aufheben
+              if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a') {
+                e.preventDefault()
+                setSelectedIds(shown.map((q) => q.id!))
+              } else if (e.key === 'Escape') {
+                setSelectedIds([])
+              }
+            }}
+          >
             <table className="w-full border-collapse text-[13px]">
               <thead className="sticky top-0 bg-surface-2 text-left text-[12px] text-muted">
                 <tr>
@@ -190,7 +204,8 @@ export function QuestionsTab() {
             {!shown.length && <Empty>{all.length ? 'Keine Frage passt zum Filter.' : 'Noch keine Fragen. Generiere sie im Tab „Fächer“ oder lege eigene an.'}</Empty>}
           </div>
           <div className="border-t border-line px-3 py-1.5 text-[12px] text-muted">
-            {shown.length} von {all.length} Fragen · {pending} nicht freigegeben
+            {shown.length} von {all.length} Fragen · {pending} nicht freigegeben{sel.length > 1 ? ` · ${sel.length} markiert` : ""}
+            <span className="float-right">Strg/Umschalt-Klick: mehrere · Strg+A: alle · Esc: keine</span>
           </div>
         </Panel>
 
